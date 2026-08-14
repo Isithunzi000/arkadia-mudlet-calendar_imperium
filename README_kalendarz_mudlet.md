@@ -61,5 +61,5 @@ Jeśli komenda `czas` nie zwróci odpowiedzi w ciągu 3,5 sekundy i nie ma zapis
 
 | Pakiet | Wersja | Data | Bazuje na |
 |--------|--------|------|-----------|
-| `imperium_cal` | 1.8.11m | 24-06-2026 | imperium_cal 1.8.11 (Dargoth) |
+| `imperium_cal` | 1.8.12m | 15-08-2026 | imperium_cal 1.8.12 (Dargoth) |
 | `ishtar_cal` | 1.8.11m | 24-06-2026 | ishtar_cal 1.8.11 (Dargoth) |
