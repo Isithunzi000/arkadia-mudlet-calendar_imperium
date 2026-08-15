@@ -16,6 +16,22 @@ lua installPackage("/sciezka/do/ishtar_cal.mpackage")
 
 > Paczka powinna się znajdować powyżej skryptów ogólnodostępnych Arkadii. Ustaw to w Package Manager przesuwając paczkę w górę listy.
 
+## Problemy z instalacją
+
+Objaw: `installPackage` zwraca `true`, ale pakiet nie pojawia się na liście w Package Manager i komenda (`/imperium` lub `/ishtar`) nie działa.
+
+Przyczyna: znany błąd Mudleta — jeśli wcześniejsza próba instalacji się nie powiodła (np. przerwane pobieranie pliku, podwójna instalacja), w katalogu profilu zostaje martwy folder pakietu i każda kolejna instalacja po cichu się nie udaje. Ponawianie instalacji nie pomaga — folder trzeba usunąć ręcznie.
+
+Naprawa:
+
+1. W linii poleceń Mudlet wpisz `lua getMudletHomeDir()` i otwórz wyświetlony katalog.
+2. Skasuj folder pakietu, którego dotyczy problem — `imperium_cal` lub `ishtar_cal` — oraz ewentualny folder nazwany jak pobrany plik bez rozszerzenia (np. `ishtar_cal_1_8_11m`). To martwe resztki; poprawnie zainstalowany pakiet byłby widoczny na liście.
+3. Zrestartuj profil.
+4. Zainstaluj pakiet przez **Toolbox** → **Package Manager** (`Alt+O`) → **Install**.
+5. Sprawdź `lua getPackages()` — pakiet powinien być na liście, a komenda działać.
+
+Jeśli pakiet nadal się nie instaluje, sprawdź konsolę główną pod kątem linii `[ ERROR ]` lub `[ WARN ]` tuż po instalacji i zgłoś problem na Discordzie.
+
 ## Użycie
 
 | Komenda | Opis |
