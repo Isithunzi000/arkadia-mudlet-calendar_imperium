@@ -1,0 +1,993 @@
+<MudletPackage version="1.001">
+	<TriggerPackage>
+		<TriggerGroup isActive="yes" isFolder="yes" isTempTrigger="no" isMultiline="no" isPerlSlashGOption="no" isColorizerTrigger="no" isFilterTrigger="no" isSoundTrigger="no" isColorTrigger="no" isColorTriggerFg="no" isColorTriggerBg="no">
+			<name>imperium_cal</name>
+			<script />
+			<triggerType>0</triggerType>
+			<conditonLineDelta>0</conditonLineDelta>
+			<mStayOpen>0</mStayOpen>
+			<mCommand />
+			<packageName />
+			<mFgColor>#ff0000</mFgColor>
+			<mBgColor>#ffff00</mBgColor>
+			<mSoundFile />
+			<colorTriggerFgColor>#000000</colorTriggerFgColor>
+			<colorTriggerBgColor>#000000</colorTriggerBgColor>
+			<regexCodeList />
+			<regexCodePropertyList />
+			<Trigger isActive="yes" isFolder="no" isTempTrigger="no" isMultiline="no" isPerlSlashGOption="no" isColorizerTrigger="no" isFilterTrigger="no" isSoundTrigger="no" isColorTrigger="no" isColorTriggerFg="no" isColorTriggerBg="no">
+				<name>imperium_cal_czas_trigger</name>
+				<script>if imperium_cal and imperium_cal.onCzasLine then
+  imperium_cal.onCzasLine(line)
+end</script>
+				<triggerType>0</triggerType>
+				<conditonLineDelta>0</conditonLineDelta>
+				<mStayOpen>0</mStayOpen>
+				<mCommand />
+				<packageName />
+				<mFgColor>#ff0000</mFgColor>
+				<mBgColor>#ffff00</mBgColor>
+				<mSoundFile />
+				<colorTriggerFgColor>#000000</colorTriggerFgColor>
+				<colorTriggerBgColor>#000000</colorTriggerBgColor>
+				<regexCodeList>
+					<string>^Jest w przyblizeniu .* wedlug Kalendarza Imperialnego\.?$</string>
+				</regexCodeList>
+				<regexCodePropertyList>
+					<integer>1</integer>
+				</regexCodePropertyList>
+			</Trigger>
+		</TriggerGroup>
+	</TriggerPackage>
+	<TimerPackage />
+	<AliasPackage>
+		<Alias isActive="yes" isFolder="no">
+			<name>imperium_cal_alias</name>
+			<script>if imperium_cal and imperium_cal.onAlias then
+  imperium_cal.onAlias()
+end</script>
+			<command />
+			<packageName />
+			<regex>^/imperium$</regex>
+		</Alias>
+		<Alias isActive="yes" isFolder="no">
+			<name>imperium_cal_help_alias</name>
+			<script>if imperium_cal and imperium_cal.onHelp then
+  imperium_cal.onHelp()
+end</script>
+			<command />
+			<packageName />
+			<regex>^/imperium\s+(?:help|pomoc)$</regex>
+		</Alias>
+	</AliasPackage>
+	<ActionPackage />
+	<ScriptPackage>
+		<Script isActive="yes" isFolder="no">
+			<name>imperium_cal_init</name>
+			<eventHandlerList>
+				<string>sysLoadEvent</string>
+				<string>sysInstallPackage</string>
+			</eventHandlerList>
+			<script>
+-- imperium_cal - Kalendarz Imperium dla Mudlet (port pluginu Dargoth)
+-- Zrodlo czasu: komenda "czas" (parsowana wlasnym kalendarzem). Brak zaleznosci od GMCP.
+
+imperium_cal = imperium_cal or {}
+
+do
+
+local PLUGIN_VERSION = "1.8.12m"
+local PLUGIN_BUILD   = "15-08-2026"
+
+local REAL_SEC_PER_GAME_MINUTE = 2
+local YEAR_LENGTH_DAYS         = 400
+local GAME_MINUTES_PER_DAY     = 24 * 60
+local REQUEST_TIMEOUT_S        = 3.5
+
+imperium_cal.version = PLUGIN_VERSION
+imperium_cal.build   = PLUGIN_BUILD
+
+local IMP_MONTHS = {
+  { name = "Hexenstag",   days = 1,  sunrise = 8, sunset = 17 },
+  { name = "Nachexen",    days = 32, sunrise = 8, sunset = 17 },
+  { name = "Jahrdrung",   days = 33, sunrise = 7, sunset = 18 },
+  { name = "Mitterfruhl", days = 1,  sunrise = 7, sunset = 18 },
+  { name = "Pflugzeit",   days = 33, sunrise = 6, sunset = 19 },
+  { name = "Sigmarzeit",  days = 33, sunrise = 5, sunset = 20 },
+  { name = "Sommerzeit",  days = 33, sunrise = 5, sunset = 21 },
+  { name = "Sonnstill",   days = 1,  sunrise = 5, sunset = 22 },
+  { name = "Vorgeheim",   days = 33, sunrise = 4, sunset = 22 },
+  { name = "Nachgeheim",  days = 33, sunrise = 5, sunset = 21 },
+  { name = "Erntezeit",   days = 33, sunrise = 5, sunset = 20 },
+  { name = "Mittherbst",  days = 1,  sunrise = 5, sunset = 20 },
+  { name = "Brauzeit",    days = 33, sunrise = 6, sunset = 19 },
+  { name = "Kaldezeit",   days = 33, sunrise = 6, sunset = 18 },
+  { name = "Ulriczeit",   days = 33, sunrise = 7, sunset = 17 },
+  { name = "Mondstille",  days = 1,  sunrise = 8, sunset = 16 },
+  { name = "Vorhexen",    days = 33, sunrise = 8, sunset = 16 },
+}
+
+local MONTH_ALIASES_TO_CANON = {
+  nachhexen      = "nachexen",
+  sigmarszeit    = "sigmarzeit",
+  kaltezeit      = "kaldezeit",
+  ulrichszeit    = "ulriczeit",
+  sonnenstill    = "sonnstill",
+  sonnenstil     = "sonnstill",
+  sonnenstille   = "sonnstill",
+  mondstill      = "mondstille",
+  mitterherbst   = "mittherbst",
+  hexensnacht    = "hexenstag",
+}
+
+local function trim(s)
+  return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function normalizeMonthKey(raw)
+  local k = trim(raw):lower()
+  return MONTH_ALIASES_TO_CANON[k] or k
+end
+
+local MONTH_INDEX = {}
+for i, m in ipairs(IMP_MONTHS) do
+  MONTH_INDEX[m.name:lower()] = i
+end
+for alias, canon in pairs(MONTH_ALIASES_TO_CANON) do
+  local idx = MONTH_INDEX[canon]
+  if idx then MONTH_INDEX[alias] = idx end
+end
+
+local MONTH_PREFIX_DAYS = {}
+do
+  local acc = 0
+  for _, m in ipairs(IMP_MONTHS) do
+    MONTH_PREFIX_DAYS[#MONTH_PREFIX_DAYS + 1] = acc
+    acc = acc + m.days
+  end
+end
+
+local NEW_MOONS = {
+  { dayOfMonth = 13, month = "Nachexen" },
+  { dayOfMonth = 6,  month = "Jahrdrung" },
+  { dayOfMonth = 31, month = "Jahrdrung" },
+  { dayOfMonth = 22, month = "Pflugzeit" },
+  { dayOfMonth = 14, month = "Sigmarzeit" },
+  { dayOfMonth = 6,  month = "Sommerzeit" },
+  { dayOfMonth = 31, month = "Sommerzeit" },
+  { dayOfMonth = 22, month = "Vorgeheim" },
+  { dayOfMonth = 13, month = "Nachgeheim" },
+  { dayOfMonth = 6,  month = "Erntezeit" },
+  { dayOfMonth = 31, month = "Erntezeit" },
+  { dayOfMonth = 22, month = "Brauzeit" },
+  { dayOfMonth = 14, month = "Kaldezeit" },
+  { dayOfMonth = 6,  month = "Ulriczeit" },
+  { dayOfMonth = 31, month = "Ulriczeit" },
+  { dayOfMonth = 22, month = "Vorhexen" },
+}
+
+local FULL_MOONS = {
+  { dayOfMonth = 25, month = "Nachexen" },
+  { dayOfMonth = 18, month = "Jahrdrung" },
+  { dayOfMonth = 9,  month = "Pflugzeit" },
+  { dayOfMonth = 2,  month = "Sigmarzeit" },
+  { dayOfMonth = 26, month = "Sigmarzeit" },
+  { dayOfMonth = 18, month = "Sommerzeit" },
+  { dayOfMonth = 9,  month = "Vorgeheim" },
+  { dayOfMonth = 1,  month = "Nachgeheim" },
+  { dayOfMonth = 26, month = "Nachgeheim" },
+  { dayOfMonth = 18, month = "Erntezeit" },
+  { dayOfMonth = 9,  month = "Brauzeit" },
+  { dayOfMonth = 1,  month = "Kaldezeit" },
+  { dayOfMonth = 26, month = "Kaldezeit" },
+  { dayOfMonth = 18, month = "Ulriczeit" },
+  { dayOfMonth = 9,  month = "Vorhexen" },
+}
+
+local SEASONAL_EVENTS = {
+  { dayOfYear = 18,  name = "Pierwszy dzien wiosny" },
+  { dayOfYear = 118, name = "Pierwszy dzien lata" },
+  { dayOfYear = 218, name = "Pierwszy dzien jesieni" },
+  { dayOfYear = 319, name = "Pierwszy dzien zimy" },
+}
+
+local INTERCALARY_EVENTS = {
+  { month = "Hexenstag",    dayOfMonth = 1, name = "Hexentag" },
+  { month = "Mitterfruhl",  dayOfMonth = 1, name = "Mitterfruhl" },
+  { month = "Sonnstill",    dayOfMonth = 1, name = "Sonnstill" },
+  { month = "Mittherbst",   dayOfMonth = 1, name = "Mittherbst" },
+  { month = "Mondstille",   dayOfMonth = 1, name = "Mondstille" },
+}
+
+local INTERCALARY_MONTHS = {}
+for _, e in ipairs(INTERCALARY_EVENTS) do
+  INTERCALARY_MONTHS[normalizeMonthKey(e.month)] = true
+end
+
+-- Geheimnisnacht: EVENT podwojnej pelni (NIE dzien kalendarza). Osobna lista kandydatow.
+local GEHEIMNISNACHT_FULLS = {
+  { dayOfMonth = 1,  month = "Nachgeheim" },
+  { dayOfMonth = 26, month = "Nachgeheim" },
+  { dayOfMonth = 18, month = "Erntezeit" },
+  { dayOfMonth = 9,  month = "Brauzeit" },
+  { dayOfMonth = 1,  month = "Kaldezeit" },
+}
+
+local GN_WINDOW_START_MIN = 19 * 60   -- 19:00 = 1140
+local GN_WINDOW_END_MIN   = 21 * 60   -- 21:00 = 1260
+local GN_PRIME_MIN        = 20 * 60   -- 20:00 = 1200 (srodek okna)
+local GN_SCAN_YEARS       = 4         -- ile kolejnych lat IG przeszukac (zapas)
+local GN_CLUSTER_S        = 180 * 60  -- 3 h RL: prog "ten sam cykl" przy wyborze nocy
+
+-- Europe/Warsaw bez zaleznosci od strefy systemowej (odpowiednik Intl timeZone z JS).
+-- CET = UTC+1, CEST = UTC+2; DST: ostatnia niedziela marca 01:00 UTC -&gt;
+-- ostatnia niedziela pazdziernika 01:00 UTC.
+local function daysFromCivil(y, m, d)
+  if m &lt;= 2 then y = y - 1 end
+  local era = math.floor(y / 400)
+  local yoe = y - era * 400
+  local mp  = (m + 9) % 12
+  local doy = math.floor((153 * mp + 2) / 5) + d - 1
+  return era * 146097 + yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy - 719468
+end
+
+local function dstBoundaryUtcSec(year, month)
+  -- marzec i pazdziernik maja po 31 dni; granica = ostatnia niedziela, 01:00 UTC
+  local days    = daysFromCivil(year, month, 31)
+  local weekday = (days + 4) % 7  -- 0 = niedziela (epoch 1970-01-01 = czwartek)
+  return daysFromCivil(year, month, 31 - weekday) * 86400 + 3600
+end
+
+local function warsawClockMinutes(tsSec)
+  local utc      = os.date("!*t", tsSec)
+  local startSec = dstBoundaryUtcSec(utc.year, 3)
+  local endSec   = dstBoundaryUtcSec(utc.year, 10)
+  local offMin   = (tsSec &gt;= startSec and tsSec &lt; endSec) and 120 or 60
+  return (utc.hour * 60 + utc.min + offMin) % 1440
+end
+
+local function pad2(n)
+  return string.format("%02d", n)
+end
+
+local function normalizeDayOfYear(d)
+  local m = ((d - 1) % YEAR_LENGTH_DAYS + YEAR_LENGTH_DAYS) % YEAR_LENGTH_DAYS
+  return m + 1
+end
+
+-- Godzina zachodu slonca per dzien roku, wyliczona z tabeli miesiecy (clock.ts).
+local SUNSET_BY_DOY = {}
+do
+  for i, m in ipairs(IMP_MONTHS) do
+    local start = MONTH_PREFIX_DAYS[i] + 1
+    for d = 0, m.days - 1 do
+      SUNSET_BY_DOY[start + d] = m.sunset
+    end
+  end
+end
+
+local function sunsetHourForDoy(d)
+  return SUNSET_BY_DOY[normalizeDayOfYear(d)]
+end
+
+local SUNRISE_BY_DOY = {}
+do
+  for i, m in ipairs(IMP_MONTHS) do
+    local start = MONTH_PREFIX_DAYS[i] + 1
+    for d = 0, m.days - 1 do
+      SUNRISE_BY_DOY[start + d] = m.sunrise
+    end
+  end
+end
+
+local function sunriseHourForDoy(d)
+  return SUNRISE_BY_DOY[normalizeDayOfYear(d)]
+end
+
+local function clampInt(n, minv, maxv)
+  if type(n) ~= "number" or n ~= n then return minv end
+  return math.max(minv, math.min(maxv, math.floor(n)))
+end
+
+local function clampGameTime(t)
+  return {
+    dayOfYear = clampInt(t.dayOfYear, 1, YEAR_LENGTH_DAYS),
+    hour      = clampInt(t.hour, 0, 23),
+    minute    = clampInt(t.minute, 0, 59),
+  }
+end
+
+local function isValidGameTime(t)
+  if not t then return false end
+  if type(t.dayOfYear) ~= "number" or type(t.hour) ~= "number" or type(t.minute) ~= "number" then
+    return false
+  end
+  return t.dayOfYear &gt;= 1 and t.dayOfYear &lt;= YEAR_LENGTH_DAYS
+     and t.hour &gt;= 0 and t.hour &lt;= 23
+     and t.minute &gt;= 0 and t.minute &lt;= 59
+end
+
+local function deltaGameMinutes(from, to)
+  local fromTotal = (from.dayOfYear - 1) * GAME_MINUTES_PER_DAY + from.hour * 60 + from.minute
+  local toTotal   = (to.dayOfYear - 1) * GAME_MINUTES_PER_DAY + to.hour * 60 + to.minute
+  local yearTotal = YEAR_LENGTH_DAYS * GAME_MINUTES_PER_DAY
+  local diff = toTotal - fromTotal
+  if diff &lt; 0 then diff = diff + yearTotal end
+  return diff
+end
+
+local function formatRealDate(ts)
+  local d = os.date("*t", ts)
+  return string.format("%s-%s-%d %s:%s",
+    pad2(d.day), pad2(d.month), d.year, pad2(d.hour), pad2(d.min))
+end
+
+local function truncateToMinute(ts)
+  return math.floor(ts / 60) * 60
+end
+
+local function addGameMinutes(baseSec, deltaMin)
+  return baseSec + deltaMin * REAL_SEC_PER_GAME_MINUTE
+end
+
+local function formatRealDeltaFromGameMinutes(deltaGM)
+  local totalMinReal = math.max(0, math.floor((deltaGM * REAL_SEC_PER_GAME_MINUTE) / 60 + 0.5))
+  local days    = math.floor(totalMinReal / (60 * 24))
+  local hours   = math.floor((totalMinReal % (60 * 24)) / 60)
+  local minutes = totalMinReal % 60
+  return string.format("%dd %dh %dm", days, hours, minutes)
+end
+
+local function dayOfYearFromMonthDay(monthName, dayOfMonth)
+  local idx = MONTH_INDEX[normalizeMonthKey(monthName)]
+  if not idx then return nil end
+  local maxDay = IMP_MONTHS[idx].days
+  if dayOfMonth &lt; 1 or dayOfMonth &gt; maxDay then return nil end
+  return MONTH_PREFIX_DAYS[idx] + dayOfMonth
+end
+
+local function monthDayFromDayOfYear(dayOfYear)
+  local d = normalizeDayOfYear(dayOfYear)
+  for i = #IMP_MONTHS, 1, -1 do
+    if d &gt; MONTH_PREFIX_DAYS[i] then
+      return { month = IMP_MONTHS[i].name, dayOfMonth = d - MONTH_PREFIX_DAYS[i] }
+    end
+  end
+  return nil
+end
+
+local function toSortedDoyList(list)
+  local out = {}
+  for _, item in ipairs(list) do
+    local doy = dayOfYearFromMonthDay(item.month, item.dayOfMonth)
+    if doy then out[#out + 1] = normalizeDayOfYear(doy) end
+  end
+  table.sort(out)
+  return out
+end
+
+local function nextFromSortedList(now, sortedList)
+  local nowDoy = normalizeDayOfYear(now.dayOfYear)
+  local atMidnight = (now.hour == 0 and now.minute == 0)
+  for _, d in ipairs(sortedList) do
+    if d &gt; nowDoy then return d end
+    if d == nowDoy and atMidnight then return d end
+  end
+  return sortedList[1] or 1
+end
+
+local function listContains(list, value)
+  for _, v in ipairs(list) do
+    if v == value then return true end
+  end
+  return false
+end
+
+local function buildNewMoonDoyToIndexMap(sortedNewMoonDoy)
+  local map = {}
+  for i, md in ipairs(NEW_MOONS) do
+    local doy = dayOfYearFromMonthDay(md.month, md.dayOfMonth)
+    if doy then map[normalizeDayOfYear(doy)] = i end
+  end
+  for _, d in ipairs(sortedNewMoonDoy) do
+    if not map[d] then return {} end
+  end
+  return map
+end
+
+local function computeSanityAndLists()
+  local fail = function()
+    return { ok = false, newMoons = {}, fullMoons = {}, newMoonDoyToIndex = {} }
+  end
+
+  local totalDays = 0
+  for _, m in ipairs(IMP_MONTHS) do totalDays = totalDays + m.days end
+  if totalDays ~= YEAR_LENGTH_DAYS then return fail() end
+
+  for _, it in ipairs(NEW_MOONS) do
+    if INTERCALARY_MONTHS[normalizeMonthKey(it.month)] then return fail() end
+  end
+  for _, it in ipairs(FULL_MOONS) do
+    if INTERCALARY_MONTHS[normalizeMonthKey(it.month)] then return fail() end
+  end
+
+  for _, t in ipairs({ NEW_MOONS, FULL_MOONS, INTERCALARY_EVENTS, GEHEIMNISNACHT_FULLS }) do
+    for _, it in ipairs(t) do
+      if not dayOfYearFromMonthDay(it.month, it.dayOfMonth) then return fail() end
+    end
+  end
+
+  for _, m in ipairs(IMP_MONTHS) do
+    if type(m.sunrise) ~= "number" or m.sunrise &lt; 0 or m.sunrise &gt; 23 then return fail() end
+    if type(m.sunset) ~= "number" or m.sunset &lt; 0 or m.sunset &gt; 23 then return fail() end
+  end
+
+  for _, ev in ipairs(SEASONAL_EVENTS) do
+    if type(ev.dayOfYear) ~= "number" or ev.dayOfYear &lt; 1 or ev.dayOfYear &gt; YEAR_LENGTH_DAYS then
+      return fail()
+    end
+  end
+
+  local newMoons  = toSortedDoyList(NEW_MOONS)
+  local fullMoons = toSortedDoyList(FULL_MOONS)
+  if #newMoons == 0 or #fullMoons == 0 then return fail() end
+
+  local newMoonDoyToIndex = buildNewMoonDoyToIndexMap(newMoons)
+  if not next(newMoonDoyToIndex) then return fail() end
+
+  return { ok = true, newMoons = newMoons, fullMoons = fullMoons, newMoonDoyToIndex = newMoonDoyToIndex }
+end
+
+local SANITY = computeSanityAndLists()
+imperium_cal.sanityOk = SANITY.ok
+
+-- pushEventTimingLines: wspoldzielony helper "Dzis/TRWA TERAZ" vs "Data RL/Za".
+local function pushEventTimingLines(lines, now, nowReal, doy)
+  local d = normalizeDayOfYear(doy)
+  if normalizeDayOfYear(now.dayOfYear) == d then
+    local minutesToEndOfDay = (24 - now.hour) * 60 - now.minute
+    local endReal = addGameMinutes(nowReal, minutesToEndOfDay)
+    lines[#lines + 1] = string.format("    Dzis (dzien %d)", d)
+    lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(endReal))
+    return
+  end
+  local deltaMin = deltaGameMinutes(now, { dayOfYear = d, hour = 0, minute = 0 })
+  local real = addGameMinutes(nowReal, deltaMin)
+  lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(real))
+  lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(deltaMin))
+end
+
+local function computeHexennacht(now)
+  local yearTotal = YEAR_LENGTH_DAYS * GAME_MINUTES_PER_DAY
+  local nd = (24 - sunsetHourForDoy(1) + sunriseHourForDoy(2)) * 60
+  local base = deltaGameMinutes(now, { dayOfYear = 1, hour = sunsetHourForDoy(1), minute = 0 })
+  local db = base - yearTotal
+  if db &gt; -nd then
+    return { trwa = true, deltaMin = nd + db }
+  end
+  return { trwa = false, deltaMin = base }
+end
+
+local function computeGeheimnisnachtNight(now, nowReal)
+  local yearTotal = YEAR_LENGTH_DAYS * GAME_MINUTES_PER_DAY
+  local cands = {}
+
+  for _, f in ipairs(GEHEIMNISNACHT_FULLS) do
+    local fdoy = dayOfYearFromMonthDay(f.month, f.dayOfMonth)
+    if fdoy then
+      -- Noc Geheimnisnacht = sama noc pelni (offset 0 dni).
+      local gnDoy      = normalizeDayOfYear(fdoy)
+      local gnSunsetH  = sunsetHourForDoy(gnDoy)
+      local gnSunriseH = sunriseHourForDoy(normalizeDayOfYear(gnDoy + 1))
+      local nightDur   = (24 - gnSunsetH + gnSunriseH) * 60
+      local base       = deltaGameMinutes(now, { dayOfYear = gnDoy, hour = gnSunsetH, minute = 0 })
+
+      -- TRWA: noc pelni zaczela sie mniej niz nightDur temu, wiec delta do
+      -- nastepnego wystapienia zawinela sie przez koniec roku. Sprawdzane
+      -- niezaleznie od okna - trwajacy event pokazujemy zawsze.
+      if base &gt; yearTotal - nightDur and base &lt; yearTotal then
+        return { trwa = true, deltaMin = base - (yearTotal - nightDur), nightDoy = gnDoy }
+      end
+
+      for k = 0, GN_SCAN_YEARS - 1 do
+        local dmAnchor   = base + k * yearTotal
+        local realAnchor = addGameMinutes(nowReal, dmAnchor)
+        local clockA     = warsawClockMinutes(realAnchor)
+        if clockA &gt;= GN_WINDOW_START_MIN and clockA &lt;= GN_WINDOW_END_MIN then
+          -- Przyszly event
+          cands[#cands + 1] = {
+            deltaMin = dmAnchor, nightDoy = gnDoy,
+            realSec  = realAnchor, dist = math.abs(clockA - GN_PRIME_MIN),
+          }
+        end
+      end
+    end
+  end
+
+  if #cands == 0 then return nil end
+
+  local t0 = cands[1].realSec
+  for _, c in ipairs(cands) do if c.realSec &lt; t0 then t0 = c.realSec end end
+
+  local best = nil
+  for _, c in ipairs(cands) do
+    if c.realSec &lt;= t0 + GN_CLUSTER_S then
+      if best == nil or c.dist &lt; best.dist
+         or (c.dist == best.dist and c.realSec &lt; best.realSec) then
+        best = c
+      end
+    end
+  end
+
+  if best then return { trwa = false, deltaMin = best.deltaMin, nightDoy = best.nightDoy } end
+  return nil
+end
+
+local function buildReport(nowRaw, nowSecOpt)
+  local now     = clampGameTime(nowRaw)
+  local nowReal = truncateToMinute(nowSecOpt or os.time())
+  local lines   = {}
+
+  local hexDoy = dayOfYearFromMonthDay("Hexenstag", 1) or 1
+
+  lines[#lines + 1] = "Glowne swieta interkalarne:"
+  lines[#lines + 1] = "  *** Hexentag ***"
+  pushEventTimingLines(lines, now, nowReal, hexDoy)
+
+  local hn = computeHexennacht(now)
+  lines[#lines + 1] = "  *** Hexennacht ***"
+  if hn.trwa then
+    lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(addGameMinutes(nowReal, hn.deltaMin)))
+  else
+    lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(addGameMinutes(nowReal, hn.deltaMin)))
+    lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(hn.deltaMin))
+  end
+
+  local gn = computeGeheimnisnachtNight(now, nowReal)
+  if gn then
+    local gnMd = monthDayFromDayOfYear(gn.nightDoy)
+    local gnLabel
+    if gnMd then
+      gnLabel = string.format("%s %d, dzien %d", gnMd.month, gnMd.dayOfMonth, gn.nightDoy)
+    else
+      gnLabel = string.format("dzien %d", gn.nightDoy)
+    end
+    local gnReal = addGameMinutes(nowReal, gn.deltaMin)
+    lines[#lines + 1] = string.format("  *** Geheimnisnacht (%s) ***", gnLabel)
+    if gn.trwa then
+      lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(gnReal))
+    else
+      lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(gnReal))
+      lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(gn.deltaMin))
+    end
+  end
+
+  -- Najblizsze wydarzenie sezonowe
+  local seasonalCandidates = {}
+  for _, ev in ipairs(SEASONAL_EVENTS) do
+    local doy = ev.dayOfYear
+    local isToday = normalizeDayOfYear(now.dayOfYear) == normalizeDayOfYear(doy)
+    local dMin = deltaGameMinutes(now, { dayOfYear = doy, hour = 0, minute = 0 })
+    seasonalCandidates[#seasonalCandidates + 1] =
+      { name = ev.name, dayOfYear = doy, isToday = isToday, deltaMin = dMin }
+  end
+  local seasonal = nil
+  for _, c in ipairs(seasonalCandidates) do
+    if c.isToday then seasonal = c break end
+  end
+  if not seasonal then
+    local sorted = {}
+    for _, c in ipairs(seasonalCandidates) do sorted[#sorted + 1] = c end
+    table.sort(sorted, function(a, b) return a.deltaMin &lt; b.deltaMin end)
+    seasonal = sorted[1]
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Najblizsze wydarzenie sezonowe:"
+  if seasonal then
+    lines[#lines + 1] = string.format("  %s", seasonal.name)
+    pushEventTimingLines(lines, now, nowReal, seasonal.dayOfYear)
+  end
+
+  -- Najblizsze wydarzenia ksiezycowe
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Najblizsze wydarzenia ksiezycowe:"
+
+  local nowDoyForMoon = normalizeDayOfYear(now.dayOfYear)
+  local todayNewMoonIdx = SANITY.newMoonDoyToIndex[nowDoyForMoon] or -1
+
+  if todayNewMoonIdx &gt;= 0 then
+    local sunsetHour = sunsetHourForDoy(nowDoyForMoon)
+    lines[#lines + 1] = "  *** Now astronomiczny ***"
+    pushEventTimingLines(lines, now, nowReal, nowDoyForMoon)
+    if type(sunsetHour) == "number" and now.hour &gt;= sunsetHour then
+      local minutesToEndOfDay = (24 - now.hour) * 60 - now.minute
+      local endReal = addGameMinutes(nowReal, minutesToEndOfDay)
+      lines[#lines + 1] = "  +++ Now widoczny TERAZ +++"
+      lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(endReal))
+      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
+    elseif type(sunsetHour) == "number" then
+      local minutesToSunset = (sunsetHour - now.hour) * 60 - now.minute
+      local sunsetReal = addGameMinutes(nowReal, minutesToSunset)
+      lines[#lines + 1] = "  +++ Now widoczny dzis po zachodzie slonca +++"
+      lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(sunsetReal))
+      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
+      lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(minutesToSunset))
+    end
+  else
+    local newDoy = nextFromSortedList(now, SANITY.newMoons)
+    local newDeltaMin = deltaGameMinutes(now, { dayOfYear = newDoy, hour = 0, minute = 0 })
+    local newReal = addGameMinutes(nowReal, newDeltaMin)
+    lines[#lines + 1] = "  *** Now astronomiczny ***"
+    lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(newReal))
+    lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(newDeltaMin))
+
+    local sunsetHour = sunsetHourForDoy(newDoy)
+    if type(sunsetHour) == "number" then
+      local sunsetDeltaMin = deltaGameMinutes(now, { dayOfYear = newDoy, hour = sunsetHour, minute = 0 })
+      local sunsetReal = addGameMinutes(nowReal, sunsetDeltaMin)
+      lines[#lines + 1] = "  +++ Now widoczny po zachodzie slonca +++"
+      lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(sunsetReal))
+      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
+      lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(sunsetDeltaMin))
+    end
+  end
+
+  local nowDoyForFull = normalizeDayOfYear(now.dayOfYear)
+  local fullDoy
+  if listContains(SANITY.fullMoons, nowDoyForFull) then
+    fullDoy = nowDoyForFull
+  else
+    fullDoy = nextFromSortedList(now, SANITY.fullMoons)
+  end
+  lines[#lines + 1] = "  Pelnia astronomiczna"
+  pushEventTimingLines(lines, now, nowReal, fullDoy)
+
+  -- Inne swieta interkalarne (bez Hexentag)
+  local otherIntercalary = {}
+  for _, ev in ipairs(INTERCALARY_EVENTS) do
+    local low = ev.name:lower()
+    if not low:find("hexentag", 1, true) then
+      local doy = dayOfYearFromMonthDay(ev.month, ev.dayOfMonth) or 1
+      local isToday = normalizeDayOfYear(now.dayOfYear) == normalizeDayOfYear(doy)
+      local dMin = deltaGameMinutes(now, { dayOfYear = doy, hour = 0, minute = 0 })
+      otherIntercalary[#otherIntercalary + 1] =
+        { name = ev.name, dayOfYear = doy, sortKey = isToday and -1 or dMin }
+    end
+  end
+  table.sort(otherIntercalary, function(a, b) return a.sortKey &lt; b.sortKey end)
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Inne swieta interkalarne:"
+  for _, ev in ipairs(otherIntercalary) do
+    lines[#lines + 1] = string.format("  %s", ev.name)
+    pushEventTimingLines(lines, now, nowReal, ev.dayOfYear)
+  end
+
+  return lines
+end
+
+-- ---------- Parsowanie odpowiedzi "czas" ----------
+local POLISH_ORDINAL_DAY = {
+  pierwszy = 1, drugi = 2, trzeci = 3, czwarty = 4, piaty = 5,
+  szosty = 6, siodmy = 7, osmy = 8, dziewiaty = 9, dziesiaty = 10,
+  jedenasty = 11, dwunasty = 12, trzynasty = 13, czternasty = 14,
+  pietnasty = 15, szesnasty = 16, siedemnasty = 17, osiemnasty = 18,
+  dziewietnasty = 19, dwudziesty = 20, trzydziesty = 30,
+  ["dwudziesty pierwszy"] = 21, ["dwudziesty drugi"] = 22, ["dwudziesty trzeci"] = 23,
+  ["dwudziesty czwarty"] = 24, ["dwudziesty piaty"] = 25, ["dwudziesty szosty"] = 26,
+  ["dwudziesty siodmy"] = 27, ["dwudziesty osmy"] = 28, ["dwudziesty dziewiaty"] = 29,
+  ["trzydziesty pierwszy"] = 31, ["trzydziesty drugi"] = 32, ["trzydziesty trzeci"] = 33,
+}
+
+local function parsePolishOrdinalDay(words)
+  local key = trim(words:lower():gsub("%-+", " "):gsub("%s+", " "))
+  return POLISH_ORDINAL_DAY[key]
+end
+
+local HOUR_WORD_VALUE = {
+  polnoc = 0, pierwsza = 1, druga = 2, trzecia = 3, czwarta = 4,
+  piata = 5, szosta = 6, siodma = 7, osma = 8, dziewiata = 9,
+  dziesiata = 10, jedenasta = 11, dwunasta = 12, poludnie = 12,
+}
+
+local HOUR_PREFIX = { w = true, po = true, przed = true, nad = true, poznym = true }
+local DAYTIME_SET = {
+  dzien = true, nocy = true, poludniu = true, poludniem = true,
+  poludnie = true, rano = true, ranem = true, wieczorem = true,
+}
+
+-- 1:1 z parseHourFromCzasLine klienta: godzina + (opcjonalna) pora dnia + reguly PM.
+local function parseHourFromCzasLine(lc)
+  local hourWord = lc:match("^jest w przyblizeniu (%a+)")
+  if not hourWord then return nil end
+  local value = HOUR_WORD_VALUE[hourWord]
+  if type(value) ~= "number" then return nil end
+
+  local rest = lc:match("^jest w przyblizeniu %a+%s+(.*)$") or ""
+  local firstWord = rest:match("^(%a+)")
+  if firstWord and HOUR_PREFIX[firstWord] then
+    rest = rest:gsub("^%a+%s*", "")
+  end
+  local dtWord = rest:match("^(%a+)")
+  local daytime = (dtWord and DAYTIME_SET[dtWord]) and dtWord or ""
+
+  local hours = value
+  if daytime == "poludniu" or daytime == "wieczorem" or (daytime == "nocy" and value &gt;= 6) then
+    hours = hours + 12
+  end
+  if hours &gt; 23 then hours = 0 end
+  return hours
+end
+
+local function matchMonthNameFromText(monthKey)
+  local idx = MONTH_INDEX[normalizeMonthKey(monthKey)]
+  if not idx then return nil end
+  return IMP_MONTHS[idx].name
+end
+
+local function tryParseCzasOutput(text)
+  local hour = parseHourFromCzasLine(text:lower())
+  if hour == nil then return nil end
+  local t = text:lower()
+
+  -- "X dzien miesiaca Y" (dzien podany slownie, 1-2 wyrazy)
+  local before, monthKey = t:match("(.-)dzien miesiaca%s+(%a+)")
+  if before and monthKey then
+    before = trim(before)
+    local dayNum = nil
+    local w1, w2 = before:match("(%a+)%s+(%a+)$")
+    if w1 and w2 then dayNum = parsePolishOrdinalDay(w1 .. " " .. w2) end
+    if not dayNum then
+      local lastWord = before:match("(%a+)$")
+      if lastWord then dayNum = parsePolishOrdinalDay(lastWord) end
+    end
+    if not dayNum then return nil end
+    local monthName = matchMonthNameFromText(monthKey)
+    if not monthName then return nil end
+    local doy = dayOfYearFromMonthDay(monthName, dayNum)
+    if not doy then return nil end
+    return { dayOfYear = doy, hour = hour, minute = 0 }
+  end
+
+  -- "dzien/noc &lt;Swieto&gt; wedlug" (interkalarne)
+  local hKey = t:match("dzien%s+(%a+)%s*[,%.]?%s*wedlug") or t:match("noc%s+(%a+)%s*[,%.]?%s*wedlug")
+  if hKey then
+    local monthName = matchMonthNameFromText(hKey)
+    if not monthName then return nil end
+    local doy = dayOfYearFromMonthDay(monthName, 1)
+    if not doy then return nil end
+    return { dayOfYear = doy, hour = hour, minute = 0 }
+  end
+
+  return nil
+end
+
+local function stripAnsi(s)
+  return (s:gsub("\27%[[0-9;%?]*[ -/]*[@-~]", ""))
+end
+
+local function sanitizeCzasLine(line)
+  local s = stripAnsi(line or "")
+  local bi = s:find("%[")
+  if bi then s = s:sub(1, bi - 1) end
+  s = s:gsub("^%s*&gt;%s*", "")
+  s = s:gsub("%s+", " ")
+  return trim(s)
+end
+
+local function isLikelyImperiumCzasLine(raw)
+  local lc = raw:lower()
+  if lc:sub(1, 19) ~= "jest w przyblizeniu" then return false end
+  return lc:find("kalendarza imperialnego", 1, true) ~= nil
+end
+
+-- ---------- Wyjscie (kolory cecho, znormalizowane) ----------
+local C_HEADER = "&lt;yellow&gt;"
+local C_STAR   = "&lt;cyan&gt;"
+local C_NOW    = "&lt;green&gt;"
+local C_DATA   = "&lt;white&gt;"
+local C_SEP    = "&lt;cyan&gt;"
+local C_RESET  = "&lt;reset&gt;"
+
+local function colorForLine(l)
+  if l == "" then return C_RESET end
+  if l:find("TRWA TERAZ", 1, true) or l:find("+++", 1, true) then return C_NOW end
+  if l:find("***", 1, true) then return C_STAR end
+  if l:sub(1, 1) ~= " " and l:sub(-1) == ":" then return C_HEADER end
+  if l:sub(1, 4) == "    " then return C_DATA end
+  return C_DATA
+end
+
+local function safeCecho(s)
+  if cecho then cecho(s) else io.write((s:gsub("&lt;%a+&gt;", ""))) end
+end
+
+local function printFramedReport(lines)
+  safeCecho("\n\n" .. C_SEP .. "---" .. C_RESET .. "\n")
+  for _, l in ipairs(lines) do
+    safeCecho(colorForLine(l) .. l .. C_RESET .. "\n")
+  end
+  safeCecho(C_SEP .. "---" .. C_RESET .. "\n\n")
+end
+
+local MSG_INTERNAL = { "Blad wewnetrzny kalendarza Imperium - nie mozna wyliczyc danych." }
+local MSG_GN_COLDSTART = {
+  "Trwa Geheimnisnacht - komenda 'czas' nie podaje teraz daty.",
+  "To pierwsze uzycie w tej sesji, wiec nie mam zapamietanej daty do wyliczenia.",
+  "Uruchom /imperium raz poza Geheimnisnacht (gdy 'czas' pokazuje date) - potem zadziala tez w trakcie eventu.",
+}
+local MSG_TIMEOUT = {
+  "Brak odpowiedzi na komende 'czas' (timeout) i nie mam zapamietanej daty.",
+  "Sprawdz, czy 'czas' dziala, i sprobuj ponownie.",
+}
+
+local function printUnable()
+  printFramedReport(MSG_INTERNAL)
+end
+
+local function printGnColdStart()
+  printFramedReport(MSG_GN_COLDSTART)
+end
+
+local function printTimeout()
+  printFramedReport(MSG_TIMEOUT)
+end
+
+local function runImperiumReport(now)
+  if not SANITY.ok then printUnable() return end
+  local ok = pcall(function() printFramedReport(buildReport(now)) end)
+  if not ok then printUnable() end
+end
+
+-- ---------- Stan i kotwica (w pamieci) ----------
+local pendingRequest = false
+local anchor = nil  -- { dayOfYear, hour, minute, rlSec }
+
+local function clearPending()
+  pendingRequest = false
+end
+
+local function saveTimeAnchor(dayOfYear, hour, minute)
+  anchor = {
+    dayOfYear = clampInt(dayOfYear, 1, YEAR_LENGTH_DAYS),
+    hour      = clampInt(hour, 0, 23),
+    minute    = clampInt(minute, 0, 59),
+    rlSec     = os.time(),
+  }
+end
+
+local function extrapolateFromAnchor(a, nowSec)
+  local elapsedSec = nowSec - a.rlSec
+  if elapsedSec &lt; 0 then return nil end
+  local elapsedGameMinutes = math.floor(elapsedSec / REAL_SEC_PER_GAME_MINUTE)
+  local yearTotal = YEAR_LENGTH_DAYS * GAME_MINUTES_PER_DAY
+  local anchorTotal = (a.dayOfYear - 1) * GAME_MINUTES_PER_DAY + a.hour * 60 + a.minute
+  local nowTotal = ((anchorTotal + elapsedGameMinutes) % yearTotal + yearTotal) % yearTotal
+  local rem = nowTotal % GAME_MINUTES_PER_DAY
+  return clampGameTime({
+    dayOfYear = math.floor(nowTotal / GAME_MINUTES_PER_DAY) + 1,
+    hour      = math.floor(rem / 60),
+    minute    = rem % 60,
+  })
+end
+
+local function tryFinishFromAnchor()
+  if not pendingRequest then return false end
+  if not anchor then return false end
+  local now = extrapolateFromAnchor(anchor, os.time())
+  if not isValidGameTime(now) then return false end
+  clearPending()
+  runImperiumReport(now)
+  return true
+end
+
+-- ---------- Handlery (wywolywane przez trigger / alias z XML) ----------
+function imperium_cal.onCzasLine(lineText)
+  if not pendingRequest then return end
+  local raw = sanitizeCzasLine(lineText)
+  if not isLikelyImperiumCzasLine(raw) then return end
+
+  local parsed = tryParseCzasOutput(raw)
+  if not isValidGameTime(parsed) then
+    -- Rozpoznana linia 'czas' bez daty w klauzuli (event Geheimnisnacht: gra podaje
+    -- "noc Geheimnisnacht" zamiast "X dzien miesiaca Y"). Nie zgaduj doy. Uzyj
+    -- WYLACZNIE kotwicy (ostatni dobry odczyt, ekstrapolowany) = biezaca data IG.
+    -- Natychmiast, bez czekania na timeout. Brak kotwicy -&gt; nie zgaduj.
+    if deleteLine then deleteLine() end
+    if not tryFinishFromAnchor() then
+      clearPending()
+      printGnColdStart()
+    end
+    return
+  end
+
+  if deleteLine then deleteLine() end
+
+  saveTimeAnchor(parsed.dayOfYear, parsed.hour, parsed.minute)
+  clearPending()
+  runImperiumReport(parsed)
+end
+
+function imperium_cal.onAlias()
+  if not SANITY.ok then printUnable() return end
+  if pendingRequest then return end
+
+  pendingRequest = true
+  if send then send("czas", false) end
+
+  if tempTimer then
+    tempTimer(REQUEST_TIMEOUT_S + 0.05, function()
+      if not pendingRequest then return end
+      if tryFinishFromAnchor() then return end
+      clearPending()
+      printTimeout()
+    end)
+  end
+end
+
+function imperium_cal.onHelp()
+  local L = {
+    "Kalendarz Imperium  (v" .. PLUGIN_VERSION .. " | " .. PLUGIN_BUILD .. ")",
+    "",
+    "Plugin wylicza przyblizony czas do najblizszych wydarzen ksiezycowych,",
+    "sezonowych i swiat interkalarnych w domenie Imperium na podstawie",
+    "odpowiedzi serwera na komende 'czas'.",
+    "",
+    "Uzycie:",
+    "  /imperium        - przelicz i pokaz kalendarz",
+    "  /imperium help   - ta pomoc",
+    "",
+    "Wyniki: najblizszy now (Mannslieb) z godzina widocznosci sierpa po zachodzie",
+    "slonca, pelnia, najblizsze wydarzenie sezonowe oraz swieta interkalarne.",
+    "Hexentag, Hexennacht, Geheimnisnacht oraz now sa wyroznione gwiazdkami.",
+    "Jesli event aktualnie trwa, wyswietlany jest komunikat TRWA TERAZ z godzina zakonczenia.",
+    "Przeliczenie: 120 sekund RL = 1 godzina IG (przyblizenie).",
+    "Jesli nie uda sie odczytac 'czas', plugin nie zgaduje danych.",
+  }
+  safeCecho("\n" .. C_SEP .. "---" .. C_RESET .. "\n")
+  for i, l in ipairs(L) do
+    local col = (i == 1) and C_HEADER or ((l:sub(-1) == ":" ) and C_HEADER or C_DATA)
+    safeCecho(col .. l .. C_RESET .. "\n")
+  end
+  safeCecho(C_SEP .. "---" .. C_RESET .. "\n\n")
+end
+
+function imperium_cal_init(event, arg)
+  if event == "sysInstallPackage" and arg ~= "imperium_cal" then return end
+  if SANITY.ok then
+    if cecho then
+      cecho("&lt;green&gt;[imperium_cal]&lt;reset&gt; Kalendarz Imperium v" .. PLUGIN_VERSION ..
+            " zaladowany. Wpisz &lt;yellow&gt;/imperium&lt;reset&gt; (pomoc: &lt;yellow&gt;/imperium help&lt;reset&gt;).\n")
+    end
+  else
+    if cecho then
+      cecho("&lt;red&gt;[imperium_cal]&lt;reset&gt; BLAD: dane kalendarza nie przeszly weryfikacji.\n")
+    end
+  end
+end
+
+-- Hooki dla testow jednostkowych (uzywane tez przez handlery powyzej).
+imperium_cal._test = {
+  buildReport          = buildReport,
+  computeGN            = computeGeheimnisnachtNight,
+  warsawClockMinutes   = warsawClockMinutes,
+  tryParseCzasOutput   = tryParseCzasOutput,
+  sanitizeCzasLine     = sanitizeCzasLine,
+  parseHourFromCzasLine= parseHourFromCzasLine,
+  dayOfYearFromMonthDay= dayOfYearFromMonthDay,
+  normalizeDayOfYear   = normalizeDayOfYear,
+  extrapolateFromAnchor= extrapolateFromAnchor,
+  sanity               = SANITY,
+}
+
+end
+
+</script>
+		</Script>
+	</ScriptPackage>
+	<KeyPackage />
+	<HelpPackage>
+		<helpURL />
+	</HelpPackage>
+</MudletPackage>
