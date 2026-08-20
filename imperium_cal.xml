@@ -76,8 +76,8 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.12m"
-local PLUGIN_BUILD   = "15-08-2026"
+local PLUGIN_VERSION = "1.8.13m"
+local PLUGIN_BUILD   = "20-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
 local YEAR_LENGTH_DAYS         = 400
@@ -735,12 +735,18 @@ local function tryParseCzasOutput(text)
   local before, monthKey = t:match("(.-)dzien miesiaca%s+(%a+)")
   if before and monthKey then
     before = trim(before)
+    -- odcinamy klauzule godzinowa "jest w przyblizeniu ..., " zeby slowa godziny
+    -- nie zlewaly sie z liczebnikiem dnia
+    local dayPart = before:match("^jest w przyblizeniu .-,%s*(.-)%s*$") or before
     local dayNum = nil
-    local w1, w2 = before:match("(%a+)%s+(%a+)$")
-    if w1 and w2 then dayNum = parsePolishOrdinalDay(w1 .. " " .. w2) end
-    if not dayNum then
-      local lastWord = before:match("(%a+)$")
-      if lastWord then dayNum = parsePolishOrdinalDay(lastWord) end
+    local w1, w2 = dayPart:match("(%a+)%s+(%a+)$")
+    if w1 and w2 then
+      -- dwuslowowy liczebnik spoza tabeli (np. "trzydziesty czwarty") = blad;
+      -- BEZ fallbacku na ostatni wyraz (inaczej "34. dzien Nachexen" zawijal sie na doy 5)
+      dayNum = parsePolishOrdinalDay(w1 .. " " .. w2)
+      if not dayNum then return nil end
+    else
+      dayNum = parsePolishOrdinalDay(dayPart)
     end
     if not dayNum then return nil end
     local monthName = matchMonthNameFromText(monthKey)
