@@ -64,5 +64,3 @@ Jeśli nadal się nie instaluje, sprawdź konsolę główną pod kątem linii `[
 - przelicznik czasu: 2 sekundy RL = 1 minuta IG (1 godzina gry = 120 s RL)
 - Kalendarz Imperialny: 400 dni (17 pozycji: 12 miesięcy + 5 świąt interkalarnych)
 - źródłem czasu jest wyłącznie komenda `czas` — pakiet nie zależy od GMCP
-- wersja `1.8.13m` — fix walidacji dnia miesiąca w parserze `czas` (np. „34. dzień Nachexen” jest odrzucany zamiast zawijać się na 4. dzień)
-- wersja `1.8.12m` bazuje na imperium_cal 1.8.12 (Dargoth)
