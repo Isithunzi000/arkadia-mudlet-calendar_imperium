@@ -24,6 +24,7 @@ Plik [`imperium_cal.xml`](imperium_cal.xml) w korzeniu repo to źródło pakietu
 |---------|------|
 | `/imperium` | pokazuje kalendarz Imperium |
 | `/imperium help` | pomoc (działa też `/imperium pomoc`) |
+| `/imperium aktualizuj` | sprawdza i instaluje aktualizację z GitHub Releases |
 
 ## Co pokazuje
 
@@ -43,6 +44,12 @@ Plik [`imperium_cal.xml`](imperium_cal.xml) w korzeniu repo to źródło pakietu
 - jeśli serwer nie odpowie na `czas` w ciągu 3,5 s i nie ma zapisanej daty, zobaczysz komunikat o błędzie
 
 > W mudlet-web (Mudlet w przeglądarce) zapis działa przez IndexedDB — per origin i profil, best-effort (np. czyszczenie danych przeglądarki kasuje kotwicę).
+
+---
+
+## Aktualizacje
+
+Pakiet sam sprawdza aktualizacje: przy starcie klienta (nie częściej niż co 8 godzin) pyta o najnowsze wydanie na GitHubie i — jeśli jest nowsza wersja — wyświetla powiadomienie. Sam nic nie instaluje: aktualizację uruchamiasz świadomie komendą `/imperium aktualizuj`, która pobiera paczkę, podmienia ją i prosi o restart Mudleta.
 
 ---
 
