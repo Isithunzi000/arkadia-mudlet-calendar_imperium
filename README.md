@@ -2,7 +2,7 @@
 
 Pakiet do Mudleta: kalendarz domeny Imperium (Kalendarz Imperialny) dla Arkadii MUD. Komenda `/imperium` pokazuje przybliżony czas do najbliższych wydarzeń księżycowych, sezonowych i świąt — RL i IG.
 
-Port pluginu [imperium_cal z klienta Dargoth](https://github.com/Isithunzi000/arkadia-dargoth-plugins) (v1.8.12).
+Port pluginu [imperium_cal z klienta Dargoth](https://github.com/Isithunzi000/arkadia-dargoth-plugins) .
 
 ---
 
@@ -36,8 +36,13 @@ Plik [`imperium_cal.xml`](imperium_cal.xml) w korzeniu repo to źródło pakietu
 ## Jak to działa
 
 - przy wywołaniu `/imperium` pakiet sam wysyła komendę `czas` i parsuje odpowiedź serwera (linia jest ukrywana z okna gry)
-- odczytany czas zapisuje się jako **kotwica** (czas IG + timestamp RL); przy kolejnych wywołaniach czas jest ekstrapolowany z kotwicy, bez dodatkowych zapytań
-- jeśli serwer nie odpowie na `czas` w ciągu 3,5 s i nie ma zapisanej kotwicy, zobaczysz komunikat o błędzie
+- udany odczyt zapisuje się jako **kotwica** (czas IG + timestamp RL) — to zapas na wypadek błędu odczytu, nie skrót: pakiet zawsze pyta serwer
+- kotwica zapisuje się na dysku profilu (`imperium_cal_anchor_v2.lua`) i przeżywa restart klienta; uszkodzony, stary albo obcy plik jest po cichu ignorowany
+- gdy odczyt `czas` się nie powiedzie albo postać jest w innej domenie, pakiet liczy z zapisanej daty i **mówi o tym** — przed raportem pojawia się linia „Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: …)"
+- gdy zapisanej daty nie ma, pakiet wyświetla komunikat zamiast zgadywać
+- jeśli serwer nie odpowie na `czas` w ciągu 3,5 s i nie ma zapisanej daty, zobaczysz komunikat o błędzie
+
+> W mudlet-web (Mudlet w przeglądarce) zapis działa przez IndexedDB — per origin i profil, best-effort (np. czyszczenie danych przeglądarki kasuje kotwicę).
 
 ---
 
