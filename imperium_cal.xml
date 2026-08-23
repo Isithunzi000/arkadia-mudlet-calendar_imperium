@@ -81,6 +81,15 @@ end</script>
 			<packageName />
 			<regex>^/imperium\s+(?:help|pomoc)$</regex>
 		</Alias>
+		<Alias isActive="yes" isFolder="no">
+			<name>imperium_cal_aktualizuj_alias</name>
+			<script>if imperium_cal and imperium_cal.onAktualizuj then
+  imperium_cal.onAktualizuj()
+end</script>
+			<command />
+			<packageName />
+			<regex>^/imperium\s+aktualizuj$</regex>
+		</Alias>
 	</AliasPackage>
 	<ActionPackage />
 	<ScriptPackage>
@@ -98,8 +107,8 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.17m"
-local PLUGIN_BUILD   = "23-08-2026"
+local PLUGIN_VERSION = "1.8.18m"
+local PLUGIN_BUILD   = "24-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
 local YEAR_LENGTH_DAYS         = 400
@@ -1062,6 +1071,7 @@ function imperium_cal.onHelp()
     "Uzycie:",
     "  /imperium        - przelicz i pokaz kalendarz",
     "  /imperium help   - ta pomoc",
+    "  /imperium aktualizuj - sprawdz i zainstaluj aktualizacje",
     "",
     "Wyniki: najblizszy now (Mannslieb) z godzina widocznosci sierpa po zachodzie",
     "slonca, pelnia, najblizsze wydarzenie sezonowe oraz swieta interkalarne.",
@@ -1080,9 +1090,179 @@ function imperium_cal.onHelp()
   safeCecho(C_SEP .. "---" .. C_RESET .. "\n\n")
 end
 
+-- ==================================================== autoaktualizacja
+-- Repo publiczne na GitHub: releases/latest (anonimowe API) -&gt; asset
+-- .mpackage -&gt; uninstallPackage -&gt; installPackage (wzorzec skryptow
+-- aktualizacji Tjurczyka). Check przy starcie z throttlem 8 h (cache na
+-- dysku profilu); miedzy checkami powiadomienie odtwarzane z knownLatest.
+-- Komenda /imperium aktualizuj pomija throttle.
+local UPDATE_REPO         = "arkadia-mudlet-calendar_imperium"
+local UPDATE_PKG_NAME     = "imperium_cal"
+local UPDATE_CMD          = "/imperium aktualizuj"
+local UPDATE_THROTTLE_SEC = 8 * 3600
+local UPDATE_API_URL      = "https://api.github.com/repos/Isithunzi000/" .. UPDATE_REPO .. "/releases/latest"
+local UPDATE_CACHE_PATH   = getMudletHomeDir() .. "/imperium_cal_update_cache.lua"
+
+local updateDlHandlers = {}
+local updateMetaPath = nil
+local updatePkgPath = nil
+local updatePendingVersion = nil
+local updateManual = false
+
+local function updateCacheRead()
+  local t = {}
+  local ok, res = pcall(table.load, UPDATE_CACHE_PATH, t)
+  if ok and res then return t end
+  return {}
+end
+
+local function updateCacheWrite(latest)
+  pcall(table.save, UPDATE_CACHE_PATH, { lastCheck = os.time(), knownLatest = latest })
+end
+
+local function updateVersionParts(v)
+  local parts = {}
+  for seg in tostring(v):gmatch("[^%.]+") do
+    parts[#parts + 1] = tonumber(seg:match("^%d+")) or 0
+  end
+  return parts
+end
+
+-- Porownanie numeryczne segmentow (suffix literowy pomijany): 1.8.9m &lt; 1.8.16m.
+local function updateVersionNewer(a, b)
+  local pa, pb = updateVersionParts(a), updateVersionParts(b)
+  for i = 1, math.max(#pa, #pb) do
+    local x, y = pa[i] or 0, pb[i] or 0
+    if x ~= y then return x &gt; y end
+  end
+  return false
+end
+
+local function updateSay(msg)
+  safeCecho(C_HEADER .. "[imperium_cal] " .. msg .. C_RESET .. "\n")
+end
+
+local function updateNotify(latest)
+  safeCecho("\n" .. C_HEADER .. "[imperium_cal] Dostepna nowa wersja " .. latest ..
+    " (masz " .. PLUGIN_VERSION .. "). Wpisz " .. C_NOW .. UPDATE_CMD ..
+    C_RESET .. C_HEADER .. " aby zaktualizowac." .. C_RESET .. "\n\n")
+end
+
+local function updateFail(what)
+  updateSay("Nie udalo sie " .. what .. " - sprobuj pozniej.")
+end
+
+local function updateKillHandlers()
+  for k, id in pairs(updateDlHandlers) do
+    killAnonymousEventHandler(id)
+    updateDlHandlers[k] = nil
+  end
+end
+
+local function updateOnError(event)
+  updateKillHandlers()
+  updateMetaPath = nil
+  updatePkgPath = nil
+  updatePendingVersion = nil
+  updateFail("sprawdzic aktualizacji")
+end
+
+local function updateOnPkgDone(event, path)
+  if path ~= updatePkgPath then return end
+  updateKillHandlers()
+  local v = updatePendingVersion
+  updatePkgPath = nil
+  updatePendingVersion = nil
+  pcall(uninstallPackage, UPDATE_PKG_NAME)
+  tempTimer(1, function()
+    installPackage(path)
+    os.remove(path)
+    updateSay("Zaktualizowano do wersji " .. v .. ". Zrestartuj Mudleta, aby zmiany zadzialaly.")
+  end)
+end
+
+local function updateOnMetaDone(event, path)
+  if path ~= updateMetaPath then return end
+  updateMetaPath = nil
+  if updateDlHandlers.meta then
+    killAnonymousEventHandler(updateDlHandlers.meta)
+    updateDlHandlers.meta = nil
+  end
+  local ok, meta = pcall(function()
+    local f = io.open(path, "r")
+    if not f then error("brak pliku metadanych") end
+    local body = f:read("*a")
+    f:close()
+    return yajl.to_value(body)
+  end)
+  if not ok or type(meta) ~= "table" or type(meta.tag_name) ~= "string" then
+    updateKillHandlers()
+    updateFail("sprawdzic aktualizacji")
+    return
+  end
+  local latest = meta.tag_name:gsub("^v", "")
+  updateCacheWrite(latest)
+  if not updateVersionNewer(latest, PLUGIN_VERSION) then
+    updateKillHandlers()
+    if updateManual then updateSay("Masz najnowsza wersje (" .. PLUGIN_VERSION .. ").") end
+    return
+  end
+  if not updateManual then
+    updateKillHandlers()
+    updateNotify(latest)
+    return
+  end
+  local url = nil
+  if type(meta.assets) == "table" then
+    for _, a in ipairs(meta.assets) do
+      if type(a) == "table" and type(a.browser_download_url) == "string"
+         and a.browser_download_url:match("%.mpackage$") then
+        url = a.browser_download_url
+        break
+      end
+    end
+  end
+  if not url then
+    url = "https://github.com/Isithunzi000/" .. UPDATE_REPO .. "/releases/download/v" ..
+          latest .. "/" .. UPDATE_PKG_NAME .. "_" .. latest:gsub("%.", "_") .. ".mpackage"
+  end
+  updatePendingVersion = latest
+  updatePkgPath = getMudletHomeDir() .. "/" .. UPDATE_PKG_NAME .. "_update.mpackage"
+  updateDlHandlers.pkg = registerAnonymousEventHandler("sysDownloadDone", updateOnPkgDone)
+  downloadFile(updatePkgPath, url)
+end
+
+local function startUpdateCheck(manual)
+  updateManual = manual and true or false
+  if mudletOlderThan and mudletOlderThan(4, 6) then
+    if updateManual then updateSay("Aktualizator wymaga Mudleta 4.6 lub nowszego.") end
+    return
+  end
+  if not updateManual then
+    local cache = updateCacheRead()
+    local lastCheck = tonumber(cache.lastCheck) or 0
+    if os.time() - lastCheck &lt; UPDATE_THROTTLE_SEC then
+      if type(cache.knownLatest) == "string"
+         and updateVersionNewer(cache.knownLatest, PLUGIN_VERSION) then
+        updateNotify(cache.knownLatest)
+      end
+      return
+    end
+  end
+  updateMetaPath = getMudletHomeDir() .. "/" .. UPDATE_PKG_NAME .. "_update_meta.json"
+  updateDlHandlers.meta = registerAnonymousEventHandler("sysDownloadDone", updateOnMetaDone)
+  updateDlHandlers.err  = registerAnonymousEventHandler("sysDownloadError", updateOnError)
+  downloadFile(updateMetaPath, UPDATE_API_URL)
+end
+
+function imperium_cal.onAktualizuj()
+  startUpdateCheck(true)
+end
+
 function imperium_cal_init(event, arg)
   if event == "sysInstallPackage" and arg ~= "imperium_cal" then return end
   loadPersistedAnchor()
+  tempTimer(10, function() startUpdateCheck(false) end)
   if SANITY.ok then
     if cecho then
       cecho("&lt;green&gt;[imperium_cal]&lt;reset&gt; Kalendarz Imperium v" .. PLUGIN_VERSION ..
