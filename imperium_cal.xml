@@ -98,7 +98,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.15m"
+local PLUGIN_VERSION = "1.8.16m"
 local PLUGIN_BUILD   = "23-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -861,6 +861,11 @@ local MSG_CROSS_DOMAIN = {
   "Uzyj /ishtar zamiast /imperium.",
 }
 
+local MSG_CROSS_NO_ANCHOR = {
+  "Nie mam zapamietanej daty domeny Imperium - nie moge wyliczyc raportu.",
+  "Bedac w domenie Imperium, uzyj komendy /imperium - odczyt zapisze date na przyszlosc.",
+}
+
 local function printUnable()
   printFramedReport(MSG_INTERNAL)
 end
@@ -917,6 +922,10 @@ local function tryFinishFromAnchor()
   local now = extrapolateFromAnchor(anchor, os.time())
   if not isValidGameTime(now) then return false end
   clearPending()
+  printFramedReport({
+    "Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
+      os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
+  })
   runImperiumReport(now)
   return true
 end
@@ -950,7 +959,7 @@ end
 
 -- Zla domena (A3, jak w kliencie WWW): tylko przy wlasnym pending -
 -- komunikat, gag linii, kasowanie pending (bez timeoutu); potem raport
--- zadanej domeny z jej wlasnej kotwicy (wariant A), jesli kotwica istnieje.
+-- zadanej domeny z jej zapisanej daty (wariant A) lub komunikat S6.
 function imperium_cal.onCrossLine(lineText)
   if not pendingRequest then return end
   local raw = sanitizeCzasLine(lineText)
@@ -961,17 +970,17 @@ function imperium_cal.onCrossLine(lineText)
   clearPending()
   printFramedReport(MSG_CROSS_DOMAIN)
 
-  -- Wariant A: raport zadanej domeny z jej wlasnej kotwicy (bez delt
-  -- miedzy domenami). Brak kotwicy -> nic wiecej.
-  if anchor then
-    local now = extrapolateFromAnchor(anchor, os.time())
-    if now and isValidGameTime(now) then
-      printFramedReport({
-        "Pokazuje Imperium wyliczone z zapisanej kotwicy (ostatni odczyt: " ..
-          os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
-      })
-      runImperiumReport(now)
-    end
+  -- Wariant A: raport zadanej domeny z jej wlasnej zapisanej daty (bez delt
+  -- miedzy domenami). Brak zapisanej daty -> komunikat S6.
+  local now = anchor and extrapolateFromAnchor(anchor, os.time()) or nil
+  if now and isValidGameTime(now) then
+    printFramedReport({
+      "Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
+        os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
+    })
+    runImperiumReport(now)
+  else
+    printFramedReport(MSG_CROSS_NO_ANCHOR)
   end
 end
 
@@ -1009,8 +1018,8 @@ function imperium_cal.onHelp()
     "Hexentag, Hexennacht, Geheimnisnacht oraz now sa wyroznione gwiazdkami.",
     "Jesli event aktualnie trwa, wyswietlany jest komunikat TRWA TERAZ z godzina zakonczenia.",
     "Przeliczenie: 120 sekund RL = 1 godzina IG (przyblizenie).",
-    "Gdy odczyt 'czas' sie nie powiedzie, plugin liczy z kotwicy z tej sesji (kotwica ginie przy restarcie).",
-    "Po komunikacie o innej domenie pokazuje raport zadanej domeny z jej kotwicy, jesli ja ma.",
+    "Gdy odczyt 'czas' sie nie powiedzie, plugin liczy z zapisanej daty z tej sesji (ginie ona przy restarcie).",
+    "Po komunikacie o innej domenie pokazuje raport zadanej domeny z zapisanej daty (jesli ja ma) lub informuje o jej braku.",
     "Jesli nie uda sie odczytac 'czas', plugin nie zgaduje danych.",
   }
   safeCecho("\n" .. C_SEP .. "---" .. C_RESET .. "\n")
