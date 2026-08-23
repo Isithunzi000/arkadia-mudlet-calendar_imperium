@@ -98,7 +98,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.16m"
+local PLUGIN_VERSION = "1.8.17m"
 local PLUGIN_BUILD   = "23-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -888,6 +888,55 @@ end
 local pendingRequest = false
 local anchor = nil  -- { dayOfYear, hour, minute, rlSec }
 
+-- ---------- Persystencja kotwicy (rekord v2 na dysku profilu) ----------
+local ANCHOR_SCHEME = "hexenstag"
+local ANCHOR_FILENAME = "imperium_cal_anchor_v2.lua"
+
+local function anchorFilePath()
+  if not getMudletHomeDir then return nil end
+  return getMudletHomeDir() .. "/" .. ANCHOR_FILENAME
+end
+
+local function persistAnchorToDisk()
+  if not anchor then return end
+  if not (table.save and table.load) then return end
+  local path = anchorFilePath()
+  if not path then return end
+  pcall(function()
+    table.save(path, {
+      scheme    = ANCHOR_SCHEME,
+      dayOfYear = anchor.dayOfYear,
+      hour      = anchor.hour,
+      minute    = anchor.minute,
+      rlSec     = anchor.rlSec,
+    })
+  end)
+end
+
+local function isValidAnchorRecord(a)
+  if type(a) ~= "table" then return false end
+  if a.scheme ~= ANCHOR_SCHEME then return false end
+  if type(a.dayOfYear) ~= "number" or a.dayOfYear &lt; 1 or a.dayOfYear &gt; YEAR_LENGTH_DAYS then return false end
+  if type(a.hour) ~= "number" or a.hour &lt; 0 or a.hour &gt; 23 then return false end
+  if type(a.minute) ~= "number" or a.minute &lt; 0 or a.minute &gt; 59 then return false end
+  if type(a.rlSec) ~= "number" or a.rlSec &lt;= 0 then return false end
+  return true
+end
+
+local function loadPersistedAnchor()
+  if not (table.save and table.load) then return end
+  local path = anchorFilePath()
+  if not path then return end
+  local ok, rec = pcall(table.load, path)
+  if not ok or not isValidAnchorRecord(rec) then return end
+  anchor = {
+    dayOfYear = rec.dayOfYear,
+    hour      = rec.hour,
+    minute    = rec.minute,
+    rlSec     = rec.rlSec,
+  }
+end
+
 local function clearPending()
   pendingRequest = false
 end
@@ -899,6 +948,7 @@ local function saveTimeAnchor(dayOfYear, hour, minute)
     minute    = clampInt(minute, 0, 59),
     rlSec     = os.time(),
   }
+  persistAnchorToDisk()
 end
 
 local function extrapolateFromAnchor(a, nowSec)
@@ -1018,7 +1068,7 @@ function imperium_cal.onHelp()
     "Hexentag, Hexennacht, Geheimnisnacht oraz now sa wyroznione gwiazdkami.",
     "Jesli event aktualnie trwa, wyswietlany jest komunikat TRWA TERAZ z godzina zakonczenia.",
     "Przeliczenie: 120 sekund RL = 1 godzina IG (przyblizenie).",
-    "Gdy odczyt 'czas' sie nie powiedzie, plugin liczy z zapisanej daty z tej sesji (ginie ona przy restarcie).",
+    "Jesli nie uda sie odczytac 'czas', plugin liczy z zapisanej daty lub wyswietli komunikat.",
     "Po komunikacie o innej domenie pokazuje raport zadanej domeny z zapisanej daty (jesli ja ma) lub informuje o jej braku.",
     "Jesli nie uda sie odczytac 'czas', plugin nie zgaduje danych.",
   }
@@ -1032,6 +1082,7 @@ end
 
 function imperium_cal_init(event, arg)
   if event == "sysInstallPackage" and arg ~= "imperium_cal" then return end
+  loadPersistedAnchor()
   if SANITY.ok then
     if cecho then
       cecho("&lt;green&gt;[imperium_cal]&lt;reset&gt; Kalendarz Imperium v" .. PLUGIN_VERSION ..
