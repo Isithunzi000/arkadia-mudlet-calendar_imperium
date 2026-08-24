@@ -90,6 +90,15 @@ end</script>
 			<packageName />
 			<regex>^/imperium\s+aktualizuj$</regex>
 		</Alias>
+		<Alias isActive="yes" isFolder="no">
+			<name>imperium_cal_reset_alias</name>
+			<script>if imperium_cal and imperium_cal.onReset then
+  imperium_cal.onReset()
+end</script>
+			<command />
+			<packageName />
+			<regex>^/imperium\s+reset$</regex>
+		</Alias>
 	</AliasPackage>
 	<ActionPackage />
 	<ScriptPackage>
@@ -107,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.18m"
+local PLUGIN_VERSION = "1.8.19m"
 local PLUGIN_BUILD   = "24-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -875,6 +884,10 @@ local MSG_CROSS_NO_ANCHOR = {
   "Bedac w domenie Imperium, uzyj komendy /imperium - odczyt zapisze date na przyszlosc.",
 }
 
+local MSG_RESET_DONE = {
+  "Kotwica Imperium wyczyszczona. Uzyj /imperium na zewnatrz, zeby zapisac nowa.",
+}
+
 local function printUnable()
   printFramedReport(MSG_INTERNAL)
 end
@@ -895,6 +908,7 @@ end
 
 -- ---------- Stan i kotwica (w pamieci) ----------
 local pendingRequest = false
+local requestStartSec = nil
 local anchor = nil  -- { dayOfYear, hour, minute, rlSec }
 
 -- ---------- Persystencja kotwicy (rekord v2 na dysku profilu) ----------
@@ -948,6 +962,7 @@ end
 
 local function clearPending()
   pendingRequest = false
+  requestStartSec = nil
 end
 
 local function saveTimeAnchor(dayOfYear, hour, minute)
@@ -991,16 +1006,16 @@ end
 
 -- ---------- Handlery (wywolywane przez trigger / alias z XML) ----------
 function imperium_cal.onCzasLine(lineText)
-  if not pendingRequest then return end
   local raw = sanitizeCzasLine(lineText)
   if not isLikelyImperiumCzasLine(raw) then return end
 
   local parsed = tryParseCzasOutput(raw)
   if not isValidGameTime(parsed) then
-    -- Rozpoznana linia 'czas' bez daty w klauzuli (event Geheimnisnacht: gra podaje
-    -- "noc Geheimnisnacht" zamiast "X dzien miesiaca Y"). Nie zgaduj doy. Uzyj
-    -- WYLACZNIE kotwicy (ostatni dobry odczyt, ekstrapolowany) = biezaca data IG.
-    -- Natychmiast, bez czekania na timeout. Brak kotwicy -&gt; nie zgaduj.
+    -- Rozpoznana linia 'czas' bez daty w klauzuli (event Geheimnisnacht) -
+    -- NIGDY nie zapisuje kotwicy (O1). Bez pending: cicho. Z pending:
+    -- nie zgaduj doy, uzyj WYLACZNIE kotwicy; brak kotwicy -&gt; nie zgaduj.
+    if not pendingRequest then return end
+    if requestStartSec and os.time() - requestStartSec &gt; REQUEST_TIMEOUT_S + 0.2 then return end
     if deleteLine then deleteLine() end
     if not tryFinishFromAnchor() then
       clearPending()
@@ -1009,9 +1024,17 @@ function imperium_cal.onCzasLine(lineText)
     return
   end
 
+  -- O1: kotwica z KAZDEJ poprawnie sparsowanej linii wlasnej domeny,
+  -- takze bez pending (np. linia z /pasek, reczne 'czas', cudzy skrypt).
+  saveTimeAnchor(parsed.dayOfYear, parsed.hour, parsed.minute)
+
+  if not pendingRequest then return end
+  -- Okno stale (paritet z www/dargoth): spozniona linia przy wiszacym
+  -- pending nie dostaje gagu ani raportu; kotwica juz zapisana wyzej.
+  if requestStartSec and os.time() - requestStartSec &gt; REQUEST_TIMEOUT_S + 0.2 then return end
+
   if deleteLine then deleteLine() end
 
-  saveTimeAnchor(parsed.dayOfYear, parsed.hour, parsed.minute)
   clearPending()
   runImperiumReport(parsed)
 end
@@ -1021,6 +1044,7 @@ end
 -- zadanej domeny z jej zapisanej daty (wariant A) lub komunikat S6.
 function imperium_cal.onCrossLine(lineText)
   if not pendingRequest then return end
+  if requestStartSec and os.time() - requestStartSec &gt; REQUEST_TIMEOUT_S + 0.2 then return end
   local raw = sanitizeCzasLine(lineText)
   if not isLikelyIshtarCzasLine(raw) then return end
 
@@ -1048,6 +1072,7 @@ function imperium_cal.onAlias()
   if pendingRequest then return end
 
   pendingRequest = true
+  requestStartSec = os.time()
   if send then send("czas", false) end
 
   if tempTimer then
@@ -1058,6 +1083,16 @@ function imperium_cal.onAlias()
       printTimeout()
     end)
   end
+end
+
+-- /imperium reset (G2): czysci WYLACZNIE kotwice wlasnej domeny (RAM + plik),
+-- nie rusza cache'u updatera ani niczego innego. Idempotentny. Kotwica
+-- nie wygasa - reset to swiadome czyszczenie na zadanie gracza.
+function imperium_cal.onReset()
+  anchor = nil
+  local path = anchorFilePath()
+  if path and os.remove then os.remove(path) end
+  printFramedReport(MSG_RESET_DONE)
 end
 
 function imperium_cal.onHelp()
@@ -1072,6 +1107,7 @@ function imperium_cal.onHelp()
     "  /imperium        - przelicz i pokaz kalendarz",
     "  /imperium help   - ta pomoc",
     "  /imperium aktualizuj - sprawdz i zainstaluj aktualizacje",
+    "  /imperium reset  - wyczysc zapisana date (kotwice)",
     "",
     "Wyniki: najblizszy now (Mannslieb) z godzina widocznosci sierpa po zachodzie",
     "slonca, pelnia, najblizsze wydarzenie sezonowe oraz swieta interkalarne.",
