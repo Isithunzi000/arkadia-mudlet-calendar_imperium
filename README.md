@@ -54,6 +54,17 @@ Plik [`imperium_cal.xml`](imperium_cal.xml) w korzeniu repo to źródło pakietu
 
 Pakiet sam sprawdza aktualizacje: przy starcie klienta (nie częściej niż co 8 godzin) pyta o najnowsze wydanie na GitHubie i — jeśli jest nowsza wersja — wyświetla powiadomienie. Sam nic nie instaluje: aktualizację uruchamiasz świadomie komendą `/imperium aktualizuj`, która pobiera paczkę, podmienia ją i prosi o restart Mudleta.
 
+Od wersji **1.8.20m** assety wydania mają stałe nazwy (`imperium_cal.mpackage`, `imperium_cal.xml`), a aktualizator przed instalacją sprząta historyczne nazwy pakietów — jedna paczka zostaje w profilu zawsze pod nazwą `imperium_cal`.
+
+### Mudlet web — jednorazowe czyszczenie
+
+Starsze wydania na mudlet-web (Mudlet w przeglądarce) brały nazwę paczki od nazwy pliku, więc po aktualizacjach mogły zostać duplikaty. Po zainstalowaniu wersji 1.8.20m lub nowszej otwórz **Package Manager** i odinstaluj ręcznie wszystkie pozycje z poniższej listy, jeśli je widzisz (zostaw tylko `imperium_cal`):
+
+- `imperium_cal_update`
+- `imperium_cal_1_8_12m`, `imperium_cal_1_8_13m`, `imperium_cal_1_8_14m`, `imperium_cal_1_8_15m`, `imperium_cal_1_8_16m`, `imperium_cal_1_8_17m`, `imperium_cal_1_8_18m`, `imperium_cal_1_8_19m`
+
+To czyszczenie robisz tylko raz — kolejne aktualizacje sprzątają te nazwy samoczynnie.
+
 ---
 
 ## Problemy z instalacją

@@ -1,4 +1,4 @@
-# Release — tag v* publikuje imperium_cal.xml + imperium_cal_<wersja>.mpackage.
+# Release — tag v* publikuje imperium_cal.xml + imperium_cal.mpackage (F3: stala nazwa).
 # Guard: tag (bez v) == PLUGIN_VERSION w imperium_cal.xml (mismatch = exit 1).
 # Bramka determinizmu: dwukrotny build musi dac identyczny SHA-256.
 # Idempotencja: ponowny run dla istniejacego release nadpisuje assety (--clobber).

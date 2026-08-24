@@ -116,8 +116,8 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.19m"
-local PLUGIN_BUILD   = "24-08-2026"
+local PLUGIN_VERSION = "1.8.20m"
+local PLUGIN_BUILD   = "25-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
 local YEAR_LENGTH_DAYS         = 400
@@ -1132,12 +1132,24 @@ end
 -- aktualizacji Tjurczyka). Check przy starcie z throttlem 8 h (cache na
 -- dysku profilu); miedzy checkami powiadomienie odtwarzane z knownLatest.
 -- Komenda /imperium aktualizuj pomija throttle.
+-- Stala tozsamosc paczki (F1/F2): download do &lt;pkg&gt;.mpackage i sweep
+-- legacy nazw przed instalacja (mudlet-web nazywa paczke od pliku).
 local UPDATE_REPO         = "arkadia-mudlet-calendar_imperium"
 local UPDATE_PKG_NAME     = "imperium_cal"
 local UPDATE_CMD          = "/imperium aktualizuj"
 local UPDATE_THROTTLE_SEC = 8 * 3600
 local UPDATE_API_URL      = "https://api.github.com/repos/Isithunzi000/" .. UPDATE_REPO .. "/releases/latest"
 local UPDATE_CACHE_PATH   = getMudletHomeDir() .. "/imperium_cal_update_cache.lua"
+-- Historyczne nazwy paczek na mudlet-web (tozsamosc = nazwa pliku):
+-- wersjonowane assety release + dawniej &lt;pkg&gt;_update. Komplet wg
+-- Releases API + wersje z dzur (14-16m); self = kamizelka na lokalne buildy.
+local UPDATE_LEGACY_PKGS = {
+  "imperium_cal_update",
+  "imperium_cal_1_8_12m", "imperium_cal_1_8_13m", "imperium_cal_1_8_14m",
+  "imperium_cal_1_8_15m", "imperium_cal_1_8_16m", "imperium_cal_1_8_17m",
+  "imperium_cal_1_8_18m", "imperium_cal_1_8_19m",
+  "imperium_cal_" .. PLUGIN_VERSION:gsub("%.", "_"),
+}
 
 local updateDlHandlers = {}
 local updateMetaPath = nil
@@ -1210,6 +1222,9 @@ local function updateOnPkgDone(event, path)
   updatePkgPath = nil
   updatePendingVersion = nil
   pcall(uninstallPackage, UPDATE_PKG_NAME)
+  for _, legacyName in ipairs(UPDATE_LEGACY_PKGS) do
+    pcall(uninstallPackage, legacyName)
+  end
   tempTimer(1, function()
     installPackage(path)
     os.remove(path)
@@ -1260,10 +1275,10 @@ local function updateOnMetaDone(event, path)
   end
   if not url then
     url = "https://github.com/Isithunzi000/" .. UPDATE_REPO .. "/releases/download/v" ..
-          latest .. "/" .. UPDATE_PKG_NAME .. "_" .. latest:gsub("%.", "_") .. ".mpackage"
+          latest .. "/" .. UPDATE_PKG_NAME .. ".mpackage"
   end
   updatePendingVersion = latest
-  updatePkgPath = getMudletHomeDir() .. "/" .. UPDATE_PKG_NAME .. "_update.mpackage"
+  updatePkgPath = getMudletHomeDir() .. "/" .. UPDATE_PKG_NAME .. ".mpackage"
   updateDlHandlers.pkg = registerAnonymousEventHandler("sysDownloadDone", updateOnPkgDone)
   downloadFile(updatePkgPath, url)
 end

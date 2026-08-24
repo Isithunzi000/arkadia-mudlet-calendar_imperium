@@ -66,7 +66,7 @@ def main():
         xml_bytes = f.read()
     validate_xml_bytes(xml_bytes, XML_NAME)
 
-    base = PACKAGE + "_" + version.replace(".", "_")
+    base = PACKAGE  # F3: stala nazwa assetu (tozsamosc paczki na mudlet-web)
     mpackage_path = os.path.join(OUT_DIR, base + ".mpackage")
     with zipfile.ZipFile(mpackage_path, "w") as zf:
         write_entry(zf, "config.lua", config_lua(version).encode("utf-8"))
