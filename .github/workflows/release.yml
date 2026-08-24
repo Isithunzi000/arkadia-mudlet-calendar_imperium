@@ -49,6 +49,9 @@ jobs:
             exit 1
           fi
 
+      - name: "Validate XML (expat, linia/kolumna)"
+        run: python3 scripts/validate_xml.py
+
       - name: "Bramka determinizmu: build 2x, identyczny SHA-256"
         run: |
           set -euo pipefail
