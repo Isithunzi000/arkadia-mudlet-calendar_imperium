@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.21m"
+local PLUGIN_VERSION = "1.8.22m"
 local PLUGIN_BUILD   = "25-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -863,29 +863,29 @@ local function printFramedReport(lines)
   safeCecho(C_SEP .. "---" .. C_RESET .. "\n\n")
 end
 
-local MSG_INTERNAL = { "Blad wewnetrzny kalendarza Imperium - nie mozna wyliczyc danych." }
+local MSG_INTERNAL = { "[imperium_cal] Blad wewnetrzny kalendarza Imperium - nie mozna wyliczyc danych." }
 local MSG_GN_COLDSTART = {
-  "Trwa Geheimnisnacht - komenda 'czas' nie podaje teraz daty.",
+  "[imperium_cal] Trwa Geheimnisnacht - komenda 'czas' nie podaje teraz daty.",
   "To pierwsze uzycie w tej sesji, wiec nie mam zapamietanej daty do wyliczenia.",
   "Uruchom /imperium raz poza Geheimnisnacht (gdy 'czas' pokazuje date) - potem zadziala tez w trakcie eventu.",
 }
 local MSG_TIMEOUT = {
-  "Brak odpowiedzi na komende 'czas' (timeout) i nie mam zapamietanej daty.",
+  "[imperium_cal] Brak odpowiedzi na komende 'czas' (timeout) i nie mam zapamietanej daty.",
   "Sprawdz, czy 'czas' dziala, i sprobuj ponownie.",
 }
 -- Zla domena (A3) - komunikat 1:1 z klientem WWW.
 local MSG_CROSS_DOMAIN = {
-  "Otrzymano czas Ishtar - postac jest w domenie Ishtar.",
+  "[imperium_cal] Otrzymano czas Ishtar - postac jest w domenie Ishtar.",
   "Uzyj /ishtar zamiast /imperium.",
 }
 
 local MSG_CROSS_NO_ANCHOR = {
-  "Nie mam zapamietanej daty domeny Imperium - nie moge wyliczyc raportu.",
+  "[imperium_cal] Nie mam zapamietanej daty domeny Imperium - nie moge wyliczyc raportu.",
   "Bedac w domenie Imperium, uzyj komendy /imperium - odczyt zapisze date na przyszlosc.",
 }
 
 local MSG_RESET_DONE = {
-  "Kotwica Imperium wyczyszczona. Uzyj /imperium na zewnatrz, zeby zapisac nowa.",
+  "[imperium_cal] Kotwica Imperium wyczyszczona. Uzyj /imperium na zewnatrz, zeby zapisac nowa.",
 }
 
 local function printUnable()
@@ -997,7 +997,7 @@ local function tryFinishFromAnchor()
   if not isValidGameTime(now) then return false end
   clearPending()
   printFramedReport({
-    "Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
+    "[imperium_cal] Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
       os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
   })
   runImperiumReport(now)
@@ -1058,7 +1058,7 @@ function imperium_cal.onCrossLine(lineText)
   local now = anchor and extrapolateFromAnchor(anchor, os.time()) or nil
   if now and isValidGameTime(now) then
     printFramedReport({
-      "Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
+      "[imperium_cal] Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
         os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
     })
     runImperiumReport(now)
