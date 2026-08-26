@@ -20,7 +20,9 @@ PACKAGE = "imperium_cal"
 TITLE = "Kalendarz Imperium"
 DESCRIPTION = ("Przyblizony czas do najblizszych swiat i wydarzen w domenie "
                "Imperium (Kalendarz Imperialny): wydarzenia ksiezycowe, sezonowe i swieta interkalarne "
-               "(na podstawie komendy 'czas'). Aliasy: /imperium, /imperium help.")
+               "(na podstawie komendy 'czas'). Aliasy: /imperium, /imperium help. "
+               "Wtyczka do gry Arkadia MUD (arkadia.rpg.pl) / "
+               "Plugin for Arkadia MUD (arkadia.rpg.pl).")
 OUT_DIR = os.path.join(ROOT, "dist")
 FIXED_DATE = (1980, 1, 1, 0, 0, 0)
 FILE_ATTR = 0o100644 << 16

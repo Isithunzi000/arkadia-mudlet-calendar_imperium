@@ -116,8 +116,8 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.22m"
-local PLUGIN_BUILD   = "25-08-2026"
+local PLUGIN_VERSION = "1.8.23m"
+local PLUGIN_BUILD   = "26-08-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
 local YEAR_LENGTH_DAYS         = 400
