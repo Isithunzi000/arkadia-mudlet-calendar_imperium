@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.24"
+local PLUGIN_VERSION = "1.8.25"
 local PLUGIN_BUILD   = "26-09-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -1215,8 +1215,34 @@ local function updateOnError(event)
   updateFail("sprawdzic aktualizacji")
 end
 
+-- Weryfikacja pobranej paczki PRZED odinstalowaniem starej wersji
+-- (uszkodzony download nie moze zostawic gracza bez dzialajacego
+-- pluginu). Czysty Lua, bez zaleznosci, cross-platform:
+-- magic PK\3\4 + rekord koncowy EOCD PK\5\6 + nazwa wlasnego XML
+-- w niekompresowanych naglowkach zipa.
+local UPDATE_OWN_XML = "imperium_cal.xml"
+local function updateVerifyPkg(path)
+  local f = io.open(path, "rb")
+  if not f then return false end
+  local body = f:read("*a")
+  f:close()
+  if type(body) ~= "string" then return false end
+  if body:sub(1, 4) ~= "PK\003\004" then return false end
+  if body:find("PK\005\006", -65557) == nil then return false end
+  if body:find(UPDATE_OWN_XML, 1, true) == nil then return false end
+  return true
+end
+
 local function updateOnPkgDone(event, path)
   if path ~= updatePkgPath then return end
+  if not updateVerifyPkg(path) then
+    updateKillHandlers()
+    updatePkgPath = nil
+    updatePendingVersion = nil
+    pcall(os.remove, path)
+    updateFail("pobrania paczki")
+    return
+  end
   updateKillHandlers()
   local v = updatePendingVersion
   updatePkgPath = nil
