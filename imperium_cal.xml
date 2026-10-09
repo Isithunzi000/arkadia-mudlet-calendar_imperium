@@ -116,8 +116,8 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.25"
-local PLUGIN_BUILD   = "26-09-2026"
+local PLUGIN_VERSION = "1.8.26"
+local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
 local YEAR_LENGTH_DAYS         = 400
@@ -255,7 +255,9 @@ local GEHEIMNISNACHT_FULLS = {
 
 local GN_WINDOW_START_MIN = 19 * 60   -- 19:00 = 1140
 local GN_WINDOW_END_MIN   = 21 * 60   -- 21:00 = 1260
-local GN_PRIME_MIN        = 20 * 60   -- 20:00 = 1200 (srodek okna)
+local GN_PRIME_MIN        = 1250      -- 20:50: cel MG wg danych empirycznych 10.2026
+                                      -- (dwie obserwacje zachodu Mannslieba: 20:55 i 20:45 RL).
+                                      -- Kanon v3, parzystosc z dargoth 1.8.27 / www 1.0.13.
 local GN_SCAN_YEARS       = 4         -- ile kolejnych lat IG przeszukac (zapas)
 local GN_CLUSTER_S        = 180 * 60  -- 3 h RL: prog "ten sam cykl" przy wyborze nocy
 
@@ -423,21 +425,9 @@ local function listContains(list, value)
   return false
 end
 
-local function buildNewMoonDoyToIndexMap(sortedNewMoonDoy)
-  local map = {}
-  for i, md in ipairs(NEW_MOONS) do
-    local doy = dayOfYearFromMonthDay(md.month, md.dayOfMonth)
-    if doy then map[normalizeDayOfYear(doy)] = i end
-  end
-  for _, d in ipairs(sortedNewMoonDoy) do
-    if not map[d] then return {} end
-  end
-  return map
-end
-
 local function computeSanityAndLists()
   local fail = function()
-    return { ok = false, newMoons = {}, fullMoons = {}, newMoonDoyToIndex = {} }
+    return { ok = false, newMoons = {}, fullMoons = {} }
   end
 
   local totalDays = 0
@@ -472,10 +462,7 @@ local function computeSanityAndLists()
   local fullMoons = toSortedDoyList(FULL_MOONS)
   if #newMoons == 0 or #fullMoons == 0 then return fail() end
 
-  local newMoonDoyToIndex = buildNewMoonDoyToIndexMap(newMoons)
-  if not next(newMoonDoyToIndex) then return fail() end
-
-  return { ok = true, newMoons = newMoons, fullMoons = fullMoons, newMoonDoyToIndex = newMoonDoyToIndex }
+  return { ok = true, newMoons = newMoons, fullMoons = fullMoons }
 end
 
 local SANITY = computeSanityAndLists()
@@ -515,8 +502,9 @@ local function computeGeheimnisnachtNight(now, nowReal)
   for _, f in ipairs(GEHEIMNISNACHT_FULLS) do
     local fdoy = dayOfYearFromMonthDay(f.month, f.dayOfMonth)
     if fdoy then
-      -- Noc Geheimnisnacht = sama noc pelni (offset 0 dni).
-      local gnDoy      = normalizeDayOfYear(fdoy)
+      -- Noc Geheimnisnacht = doba nastepujaca po pelni (offset +1 doba).
+      -- Kanon v3: pelnia wypada w dzien N, noc podwojnej pelni jest noca N+1.
+      local gnDoy      = normalizeDayOfYear(fdoy + 1)
       local gnSunsetH  = sunsetHourForDoy(gnDoy)
       local gnSunriseH = sunriseHourForDoy(normalizeDayOfYear(gnDoy + 1))
       local nightDur   = (24 - gnSunsetH + gnSunriseH) * 60
@@ -561,6 +549,55 @@ local function computeGeheimnisnachtNight(now, nowReal)
 
   if best then return { trwa = false, deltaMin = best.deltaMin, nightDoy = best.nightDoy } end
   return nil
+end
+
+-- Now (Mannslieb): moment fazowy = 03:00 IG doby nastepujacej po dobie z
+-- tabeli NEW_MOONS; pierwsza bezksiezycowa noc = [zachod(d+1), wschod(d+2)].
+-- Potwierdzone empirycznie 10.2026: zegar RL 18:47 = 03:00 IG doby 390
+-- (tabela: Vorhexen 22 = doba 389). Kwadrans 03:00 to najslabszy punkt
+-- specyfikacji - jedna obserwacja minutowa. Kanon v3, parzystosc z
+-- dargoth 1.8.27 / www 1.0.13 (arkadia-kalendarze-testy ref_now_night/flip).
+local NEW_MOON_FLIP_HOUR = 3
+
+local function computeNewMoonNight(now, nowReal)
+  local yearMin = YEAR_LENGTH_DAYS * GAME_MINUTES_PER_DAY
+  local best = nil
+
+  for _, d in ipairs(SANITY.newMoons) do
+    local nightDoy      = normalizeDayOfYear(d + 1)
+    local sunsetH       = sunsetHourForDoy(nightDoy)
+    local sunriseH      = sunriseHourForDoy(normalizeDayOfYear(nightDoy + 1))
+    local nightDuration = (24 - sunsetH + sunriseH) * 60
+
+    local baseDelta = deltaGameMinutes(now, { dayOfYear = nightDoy, hour = sunsetH, minute = 0 })
+
+    -- TRWA: start nocy mniej niz nightDuration temu (delta zawinela sie
+    -- przez koniec roku). Start/koniec wylaczne - w minucie startu delta = 0
+    -- i raport pokazuje "za 0 min", nie TRWA.
+    if baseDelta &gt; yearMin - nightDuration and baseDelta &lt; yearMin then
+      return { trwa = true, deltaMin = baseDelta - (yearMin - nightDuration), nightDoy = nightDoy }
+    end
+
+    if best == nil or baseDelta &lt; best.deltaMin then
+      best = { deltaMin = baseDelta, nightDoy = nightDoy }
+    end
+  end
+
+  return { trwa = false, deltaMin = best.deltaMin, nightDoy = best.nightDoy }
+end
+
+local function computeNewMoonFlip(now, nowReal)
+  local best = nil
+
+  for _, d in ipairs(SANITY.newMoons) do
+    local flipDoy = normalizeDayOfYear(d + 1)
+    local baseDelta = deltaGameMinutes(now, { dayOfYear = flipDoy, hour = NEW_MOON_FLIP_HOUR, minute = 0 })
+    if best == nil or baseDelta &lt; best.deltaMin then
+      best = { deltaMin = baseDelta, doy = flipDoy }
+    end
+  end
+
+  return { deltaMin = best.deltaMin, doy = best.doy }
 end
 
 local function buildReport(nowRaw, nowSecOpt)
@@ -633,44 +670,33 @@ local function buildReport(nowRaw, nowSecOpt)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "Najblizsze wydarzenia ksiezycowe:"
 
-  local nowDoyForMoon = normalizeDayOfYear(now.dayOfYear)
-  local todayNewMoonIdx = SANITY.newMoonDoyToIndex[nowDoyForMoon] or -1
+  -- Now: moment fazowy = 03:00 IG doby nastepujacej po dobie z tabeli
+  -- NEW_MOONS (kanon v3, zgodnie ze zlotym standardem ref_now_flip).
+  local flip = computeNewMoonFlip(now, nowReal)
+  local flipReal = addGameMinutes(nowReal, flip.deltaMin)
+  lines[#lines + 1] = "  *** Now astronomiczny ***"
+  lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(flipReal))
+  lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(flip.deltaMin))
 
-  if todayNewMoonIdx &gt;= 0 then
-    local sunsetHour = sunsetHourForDoy(nowDoyForMoon)
-    lines[#lines + 1] = "  *** Now astronomiczny ***"
-    pushEventTimingLines(lines, now, nowReal, nowDoyForMoon)
-    if type(sunsetHour) == "number" and now.hour &gt;= sunsetHour then
-      local minutesToEndOfDay = (24 - now.hour) * 60 - now.minute
-      local endReal = addGameMinutes(nowReal, minutesToEndOfDay)
-      lines[#lines + 1] = "  +++ Now widoczny TERAZ +++"
-      lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(endReal))
-      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
-    elseif type(sunsetHour) == "number" then
-      local minutesToSunset = (sunsetHour - now.hour) * 60 - now.minute
-      local sunsetReal = addGameMinutes(nowReal, minutesToSunset)
-      lines[#lines + 1] = "  +++ Now widoczny dzis po zachodzie slonca +++"
-      lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(sunsetReal))
-      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
-      lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(minutesToSunset))
-    end
+  -- Pierwsza bezksiezycowa noc: [zachod(d+1), wschod(d+2)].
+  local nn = computeNewMoonNight(now, nowReal)
+  local nnMd = monthDayFromDayOfYear(nn.nightDoy)
+  local nnLabel
+  if nnMd then
+    nnLabel = string.format("%s %d, dzien %d", nnMd.month, nnMd.dayOfMonth, nn.nightDoy)
   else
-    local newDoy = nextFromSortedList(now, SANITY.newMoons)
-    local newDeltaMin = deltaGameMinutes(now, { dayOfYear = newDoy, hour = 0, minute = 0 })
-    local newReal = addGameMinutes(nowReal, newDeltaMin)
-    lines[#lines + 1] = "  *** Now astronomiczny ***"
-    lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(newReal))
-    lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(newDeltaMin))
-
-    local sunsetHour = sunsetHourForDoy(newDoy)
-    if type(sunsetHour) == "number" then
-      local sunsetDeltaMin = deltaGameMinutes(now, { dayOfYear = newDoy, hour = sunsetHour, minute = 0 })
-      local sunsetReal = addGameMinutes(nowReal, sunsetDeltaMin)
-      lines[#lines + 1] = "  +++ Now widoczny po zachodzie slonca +++"
-      lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(sunsetReal))
-      lines[#lines + 1] = string.format("    Zachod:  %s:00 IG", pad2(sunsetHour))
-      lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(sunsetDeltaMin))
-    end
+    nnLabel = string.format("dzien %d", nn.nightDoy)
+  end
+  lines[#lines + 1] = "  +++ Now widoczny (pierwsza bezksiezycowa noc) +++"
+  if nn.trwa then
+    local nnEnd = addGameMinutes(nowReal, nn.deltaMin)
+    lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(nnEnd))
+    lines[#lines + 1] = string.format("    %s", nnLabel)
+  else
+    local nnStart = addGameMinutes(nowReal, nn.deltaMin)
+    lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(nnStart))
+    lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(nn.deltaMin))
+    lines[#lines + 1] = string.format("    %s", nnLabel)
   end
 
   local nowDoyForFull = normalizeDayOfYear(now.dayOfYear)
@@ -1109,8 +1135,9 @@ function imperium_cal.onHelp()
     "  /imperium aktualizuj - sprawdz i zainstaluj aktualizacje",
     "  /imperium reset  - wyczysc zapisana date (kotwice)",
     "",
-    "Wyniki: najblizszy now (Mannslieb) z godzina widocznosci sierpa po zachodzie",
-    "slonca, pelnia, najblizsze wydarzenie sezonowe oraz swieta interkalarne.",
+    "Wyniki: najblizszy now (Mannslieb) - astronomiczny (faza 03:00 doby po",
+    "dobie nowu) i widoczny (pierwsza bezksiezycowa noc) - pelnia, najblizsze",
+    "wydarzenie sezonowe oraz swieta interkalarne.",
     "Hexentag, Hexennacht, Geheimnisnacht oraz now sa wyroznione gwiazdkami.",
     "Jesli event aktualnie trwa, wyswietlany jest komunikat TRWA TERAZ z godzina zakonczenia.",
     "Przeliczenie: 120 sekund RL = 1 godzina IG (przyblizenie).",
@@ -1356,6 +1383,8 @@ end
 imperium_cal._test = {
   buildReport          = buildReport,
   computeGN            = computeGeheimnisnachtNight,
+  computeNewMoonNight  = computeNewMoonNight,
+  computeNewMoonFlip   = computeNewMoonFlip,
   computeHexennacht    = computeHexennacht,
   warsawClockMinutes   = warsawClockMinutes,
   tryParseCzasOutput   = tryParseCzasOutput,

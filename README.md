@@ -29,7 +29,7 @@ Plik [`imperium_cal.xml`](imperium_cal.xml) w korzeniu repo to źródło pakietu
 
 ## Co pokazuje
 
-- najbliższy nów i pełnię Mannslieb (z godziną widoczności sierpa po zachodzie słońca)
+- najbliższy nów Mannslieb: astronomiczny (faza 03:00 IG doby następującej po dobie nowu) i widoczny (pierwsza bezksiężycowa noc, od zachodu słońca do wschodu) — oraz pełnię
 - najbliższe wydarzenie sezonowe (wiosna, lato, jesień, zima)
 - święta interkalarne: Hexentag, Mitterfruhl, Sonnstill, Mittherbst, Mondstille
 - Hexennacht i Geheimnisnacht
