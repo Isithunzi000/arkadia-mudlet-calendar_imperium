@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.30"
+local PLUGIN_VERSION = "1.8.31"
 local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -842,12 +842,13 @@ local function tryParseCzasOutput(text)
   local t = text:lower()
 
   -- "X dzien miesiaca Y" (dzien podany slownie, 1-2 wyrazy)
-  local before, monthKey = t:match("(.-)dzien miesiaca%s+(%a+)")
-  if before and monthKey then
-    before = trim(before)
-    -- odcinamy klauzule godzinowa "jest w przyblizeniu ..., " zeby slowa godziny
-    -- nie zlewaly sie z liczebnikiem dnia
-    local dayPart = before:match("^jest w przyblizeniu .-,%s*(.-)%s*$") or before
+  local datePos, monthKey = t:match("()dzien miesiaca%s+(%a+)")
+  if datePos and monthKey then
+    -- kanon (www/golden): chwytamy bezposrednio slowa liczebnika przed
+    -- "dzien miesiaca". Klasa literowa zatrzymuje sie na przecinku, wiec
+    -- klauzula wtracenia (np. "w czasie Geheimnisnacht,") jest odcinana;
+    -- poprzednie tniecie na pierwszym przecinku zwracalo nil dla takich linii.
+    local dayPart = t:match("(%a[%a%s%-]*)%s*dzien%s+miesiaca") or ""
     local dayNum = nil
     local w1, w2 = dayPart:match("(%a+)%s+(%a+)$")
     if w1 and w2 then
