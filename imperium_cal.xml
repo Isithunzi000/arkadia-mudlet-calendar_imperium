@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.27"
+local PLUGIN_VERSION = "1.8.28"
 local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -686,7 +686,7 @@ local function buildReport(nowRaw, nowSecOpt)
   else
     nnLabel = string.format("dzien %d", nn.nightDoy)
   end
-  lines[#lines + 1] = "  +++ Now widoczny (pierwsza bezksiezycowa noc) +++"
+  lines[#lines + 1] = "  +++ Now widoczny +++"
   if nn.trwa then
     local nnEnd = addGameMinutes(nowReal, nn.deltaMin)
     lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(nnEnd))
@@ -1135,7 +1135,7 @@ function imperium_cal.onHelp()
     "  /imperium reset  - wyczysc zapisana date (kotwice)",
     "",
     "Wyniki: najblizszy now (Mannslieb) - astronomiczny (faza 03:00 doby po",
-    "dobie nowu) i widoczny (pierwsza bezksiezycowa noc) - pelnia, najblizsze",
+    "dobie nowu) i widoczny (pierwsza bezksiezycowa noc po zachodzie) - pelnia, najblizsze",
     "wydarzenie sezonowe oraz swieta interkalarne.",
     "Hexentag, Hexennacht, Geheimnisnacht oraz now sa wyroznione gwiazdkami.",
     "Jesli event aktualnie trwa, wyswietlany jest komunikat TRWA TERAZ z godzina zakonczenia.",
