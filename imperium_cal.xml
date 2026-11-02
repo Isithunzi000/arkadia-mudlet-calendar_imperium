@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.29"
+local PLUGIN_VERSION = "1.8.30"
 local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -680,13 +680,22 @@ local function buildReport(nowRaw, nowSecOpt)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "Najblizsze wydarzenia ksiezycowe:"
 
+  -- Kolejnosc wpisow wg faktycznego startu RL (kanon: pełnia moze wypasc
+  -- przed nowiem, wiec sztywna kolejnosc byla mylaca). Trwajace wydarzenie
+  -- (start w przeszlosci) przed wszystkimi przyszlymi, potem niemalejaco
+  -- po dolnym przedziale czasowym.
+  local moonEvents = {}
+
   -- Now: moment fazowy = 03:00 IG doby nastepujacej po dobie z tabeli
   -- NEW_MOONS (kanon v3, zgodnie ze zlotym standardem ref_now_flip).
   local flip = computeNewMoonFlip(now, nowReal)
   local flipReal = addGameMinutes(nowReal, flip.deltaMin)
-  lines[#lines + 1] = "  *** Now astronomiczny ***"
-  lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(flipReal))
-  lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(flip.deltaMin))
+  moonEvents[#moonEvents + 1] =
+    { sortKey = flip.deltaMin, lines = {
+      "  *** Now astronomiczny ***",
+      string.format("    Data RL: %s", formatRealDate(flipReal)),
+      string.format("    Za:      %s", formatRealDeltaFromGameMinutes(flip.deltaMin)),
+    } }
 
   -- Pierwsza bezksiezycowa noc: [zachod(d+1), wschod(d+2)].
   local nn = computeNewMoonNight(now, nowReal)
@@ -697,17 +706,18 @@ local function buildReport(nowRaw, nowSecOpt)
   else
     nnLabel = string.format("dzien %d", nn.nightDoy)
   end
-  lines[#lines + 1] = "  +++ Now widoczny +++"
+  local nnLines = { "  +++ Now widoczny +++" }
   if nn.trwa then
     local nnEnd = addGameMinutes(nowReal, nn.deltaMin)
-    lines[#lines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(nnEnd))
-    lines[#lines + 1] = string.format("    %s", nnLabel)
+    nnLines[#nnLines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(nnEnd))
+    nnLines[#nnLines + 1] = string.format("    %s", nnLabel)
   else
     local nnStart = addGameMinutes(nowReal, nn.deltaMin)
-    lines[#lines + 1] = string.format("    Data RL: %s", formatRealDate(nnStart))
-    lines[#lines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(nn.deltaMin))
-    lines[#lines + 1] = string.format("    %s", nnLabel)
+    nnLines[#nnLines + 1] = string.format("    Data RL: %s", formatRealDate(nnStart))
+    nnLines[#nnLines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(nn.deltaMin))
+    nnLines[#nnLines + 1] = string.format("    %s", nnLabel)
   end
+  moonEvents[#moonEvents + 1] = { sortKey = nn.trwa and -1 or nn.deltaMin, lines = nnLines }
 
   local nowDoyForFull = normalizeDayOfYear(now.dayOfYear)
   local fullDoy
@@ -716,8 +726,32 @@ local function buildReport(nowRaw, nowSecOpt)
   else
     fullDoy = nextFromSortedList(now, SANITY.fullMoons)
   end
-  lines[#lines + 1] = "  Pelnia astronomiczna"
-  pushEventTimingLines(lines, now, nowReal, fullDoy)
+  local fullLines = { "  Pelnia astronomiczna" }
+  local fullSortKey
+  if normalizeDayOfYear(now.dayOfYear) == normalizeDayOfYear(fullDoy) then
+    local minutesToEndOfDay = (24 - now.hour) * 60 - now.minute
+    local endReal = addGameMinutes(nowReal, minutesToEndOfDay)
+    fullLines[#fullLines + 1] = string.format("    Dzis (dzien %d)", normalizeDayOfYear(fullDoy))
+    fullLines[#fullLines + 1] = string.format("    TRWA TERAZ (do %s)", formatRealDate(endReal))
+    fullSortKey = -1
+  else
+    local deltaMin = deltaGameMinutes(now, { dayOfYear = fullDoy, hour = 0, minute = 0 })
+    local real = addGameMinutes(nowReal, deltaMin)
+    fullLines[#fullLines + 1] = string.format("    Data RL: %s", formatRealDate(real))
+    fullLines[#fullLines + 1] = string.format("    Za:      %s", formatRealDeltaFromGameMinutes(deltaMin))
+    fullSortKey = deltaMin
+  end
+  moonEvents[#moonEvents + 1] = { sortKey = fullSortKey, lines = fullLines }
+
+  table.sort(moonEvents, function(a, b)
+    if a.sortKey ~= b.sortKey then return a.sortKey &lt; b.sortKey end
+    return false
+  end)
+  for _, ev in ipairs(moonEvents) do
+    for _, l in ipairs(ev.lines) do
+      lines[#lines + 1] = l
+    end
+  end
 
   -- Inne swieta interkalarne (bez Hexentag)
   local otherIntercalary = {}
