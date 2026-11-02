@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.28"
+local PLUGIN_VERSION = "1.8.29"
 local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -357,8 +357,19 @@ local function deltaGameMinutes(from, to)
   return diff
 end
 
+local function warsawDateTime(tsSec)
+  -- Pelna data-czas w Europe/Warsaw (niezaleznie od TZ maszyny): bierzemy
+  -- kalendarz UTC i przesuwamy o przesuniecie sezonowe (granice DST jak
+  -- w warsawClockMinutes). Wynik jest spojny z zegarem GN.
+  local utc      = os.date("!*t", tsSec)
+  local startSec = dstBoundaryUtcSec(utc.year, 3)
+  local endSec   = dstBoundaryUtcSec(utc.year, 10)
+  local offSec   = ((tsSec &gt;= startSec and tsSec &lt; endSec) and 120 or 60) * 60
+  return os.date("!*t", tsSec + offSec)
+end
+
 local function formatRealDate(ts)
-  local d = os.date("*t", ts)
+  local d = warsawDateTime(ts)
   return string.format("%s-%s-%d %s:%s",
     pad2(d.day), pad2(d.month), d.year, pad2(d.hour), pad2(d.min))
 end
@@ -1023,7 +1034,7 @@ local function tryFinishFromAnchor()
   clearPending()
   printFramedReport({
     "[imperium_cal] Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
-      os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
+      formatRealDate(anchor.rlSec) .. ").",
   })
   runImperiumReport(now)
   return true
@@ -1084,7 +1095,7 @@ function imperium_cal.onCrossLine(lineText)
   if now and isValidGameTime(now) then
     printFramedReport({
       "[imperium_cal] Pokazuje Imperium wyliczone z zapisanej daty (ostatni odczyt: " ..
-        os.date("%d-%m-%Y %H:%M", anchor.rlSec) .. ").",
+        formatRealDate(anchor.rlSec) .. ").",
     })
     runImperiumReport(now)
   else
