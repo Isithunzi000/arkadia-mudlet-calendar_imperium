@@ -116,7 +116,7 @@ imperium_cal = imperium_cal or {}
 
 do
 
-local PLUGIN_VERSION = "1.8.26"
+local PLUGIN_VERSION = "1.8.27"
 local PLUGIN_BUILD   = "09-10-2026"
 
 local REAL_SEC_PER_GAME_MINUTE = 2
@@ -253,10 +253,9 @@ local GEHEIMNISNACHT_FULLS = {
   { dayOfMonth = 1,  month = "Kaldezeit" },
 }
 
-local GN_WINDOW_START_MIN = 19 * 60   -- 19:00 = 1140
-local GN_WINDOW_END_MIN   = 21 * 60   -- 21:00 = 1260
-local GN_PRIME_MIN        = 1250      -- 20:50: cel MG wg danych empirycznych 10.2026
-                                      -- (dwie obserwacje zachodu Mannslieba: 20:55 i 20:45 RL).
+local GN_WINDOW_START_MIN = 20 * 60   -- 20:00 = 1200
+local GN_WINDOW_END_MIN   = 22 * 60   -- 22:00 = 1320
+local GN_PRIME_MIN        = 1285      -- 21:25: zmiana okna prime time (faza 11.2026).
                                       -- Kanon v3, parzystosc z dargoth 1.8.27 / www 1.0.13.
 local GN_SCAN_YEARS       = 4         -- ile kolejnych lat IG przeszukac (zapas)
 local GN_CLUSTER_S        = 180 * 60  -- 3 h RL: prog "ten sam cykl" przy wyborze nocy
